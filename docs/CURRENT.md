@@ -6,7 +6,7 @@ Bridge4PS Documentation Engineer product repository.
 
 ## Current phase
 
-Pipeline bootstrap. Implementation entry, not yet started.
+Baseline imported and verified. Implementation entry, not yet started. Repository Hardening Batch 1 has not started.
 
 ## Active change
 
@@ -18,6 +18,22 @@ None. No OpenSpec change is open.
 - Architecture v0.1: founder-approved and locked.
 - Universal Agentic Project Pipeline adopted from `capcutfor1month-oss/project-Pipline` at source commit `e755ece0caf62f8e7df1a6c168727049c362cd4c`.
 - Pipeline adoption is complete: `scripts/check_pipeline.py` was repaired to validate this target repository truthfully (the inherited README assertion "This is a development-governance repository" was replaced with a target-repository-accurate assertion), and `python scripts/check_pipeline.py` passes with the result `Bridge4PS target-repository pipeline-adoption checks passed.`
+- Canonical baseline imported and verified. The canonical ZIP is the complete immutable raw baseline: `baseline/source-artifacts/B4PS-TUT-main.zip` (SHA-256 `00f5e41f475b8205535481da11f73c4e4f0bd614e0d3b1efff938e921b9eb6ee`, unmodified, 58 files, embedded source commit `85af51a123e237c14f61f5bb43094292db664561`) contains every original file. The GitHub materialization at `baseline/B4PS-TUT-main/` contains 50 of those 58 source files, byte-for-byte identical to the ZIP, plus the baseline's own original `.gitattributes` restored unmodified. Eight unresolved Git LFS pointer entries are intentionally omitted from the extracted tree only, because their referenced binary objects are unavailable and GitHub rejects unresolved LFS references (`GH008`). Their exact source representations remain preserved inside the canonical ZIP. This omission is a repository-publication constraint, not a baseline repair — see the manifest below. `python scripts/check_pipeline.py` still passes.
+
+### Omitted Git LFS pointer entries (GitHub materialization only — present in the canonical ZIP)
+
+| Baseline-relative path | LFS OID | Declared size (bytes) |
+|---|---|---|
+| `.b4ps-tools/wip/new-filters-sidebar-2026-08-01/slides_171_173.pptx` | `sha256:a11552b742cfebe12b5445a399e04d2115949a2be6860e078632ba813c60372e` | 1946671 |
+| `.b4ps-tools/wip/new-filters-sidebar-2026-08-01/staged_desktop.pptx` | `sha256:4dd652abbc81b097d8cf117fce311f5cdd290c4f78907bd92f39958e9db6f536` | 149116945 |
+| `B4PS_Pipeline_Guide.pdf` | `sha256:3ad794a07ec8d76af8ebfa0ca17eb56b0e37907b7243c9cd6f79ffc712001f00` | 15909 |
+| `Current update/Desktop/MASTER Complete Bridge4PS Desktop-Browser Feature Tutorials.pptx` | `sha256:47c12e3fd04ce950ed27d540e2fddc0ff9ef12250ee7a80fa263a5f862d470f4` | 142506574 |
+| `Current update/Mobile/Copy of MASTER Complete Bridge4PS Mobile Feature Tutorials.pptx` | `sha256:85f8d522500af5de19226e3146d0d565927478ccb98225ff40ca9d3c624ad5b9` | 183065770 |
+| `Source/Design/Slide Sample.pdf` | `sha256:592008b8f42b06520b61b1490836707bdcb02a2c534382007b573d91b6b7b53d` | 396583 |
+| `Source/Desktop/Creating slides/pdf/New Filters and secondary sidebar (1).pdf` | `sha256:86311bd2578e961bb4792fecfd4e8bd401b65e7b1d425300b53f36e8541a767f` | 3503140 |
+| `Source/Desktop/Screen recording/Notification_threedots.mp4` | `sha256:38565efb71bef3421cf719e15262d0cf722ccbe1266a6c8bf5c78d36d4d3124a` | 9369549 |
+
+Each entry was present in the source ZIP only as Git LFS pointer text (not a real binary); their actual binary objects were never available to this import. GitHub rejected publishing those unresolved references with `GH008`. Their exact pointer representations remain preserved, unmodified, inside the canonical ZIP.
 
 ## Registered skill sources
 
@@ -30,15 +46,15 @@ See `docs/SKILLS.md` for Bridge4PS-specific availability and safety boundaries.
 ## Not included / not started
 
 - Detailed Architecture v0.1 specification (not yet migrated into GitHub — do not reconstruct or invent it)
-- Canonical raw baseline `B4PS-TUT-main.zip` (designated but not yet imported or verified in this repository)
+- Resolved binary content for the 8 omitted Git LFS pointer entries listed above (pointer text preserved in the canonical ZIP; actual binaries not present anywhere in this repository)
 - Product implementation
 - Repository Hardening Batch 1
 - Ontology work, HTML migration, browser exploration, future semantic versions, Freshdesk automation, AppSheet automation, video automation
 
 ## Current blocker
 
-None for bootstrap. Baseline import requires a separately approved task.
+None for baseline import. The 8 Git LFS pointer entries are an unresolved baseline availability limitation: their actual binary content is not present in the canonical ZIP or anywhere else recovered, and was not fabricated.
 
 ## Exact next action
 
-Import and verify the founder-designated canonical baseline (`B4PS-TUT-main.zip`) under a separately approved task. After baseline import and verification, the next milestone is Repository Hardening Batch 1. Do not begin either without separate approval.
+Repository Hardening Batch 1 is the next milestone and requires separate founder approval before starting. Do not begin it without separate approval.

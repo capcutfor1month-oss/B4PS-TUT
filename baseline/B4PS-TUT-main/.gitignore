@@ -1,0 +1,26 @@
+# OS cruft
+.DS_Store
+
+# PowerPoint lock files
+~$*.pptx
+~$*.ppt
+
+# Python
+__pycache__/
+*.pyc
+.b4ps-tools/.venv/
+
+# Manual timestamped backups — git history is the backup now
+Current update/*/Backups/
+
+# Regenerable QA/debug artifacts from in-progress slide work
+.b4ps-tools/wip/**/unpacked_staged/
+.b4ps-tools/wip/**/verify_*.pdf
+.b4ps-tools/wip/**/preview_*.png
+.b4ps-tools/wip/**/pdfpage-*.jpg
+
+# Regenerable analysis reports (scan/analyze output, previews)
+.b4ps-tools/reports/
+
+# Stray AI-chat export log (has personal email in filename, unrelated to slide content)
+aamir.business55-*.json
