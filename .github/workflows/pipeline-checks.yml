@@ -1,4 +1,4 @@
-name: Universal pipeline checks
+name: Bridge4PS pipeline-adoption checks
 
 on:
   pull_request:

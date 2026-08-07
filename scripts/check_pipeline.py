@@ -111,7 +111,7 @@ required_phrases = {
     ),
     "README.md": (
         "Repository identity — read this first",
-        "This is a development-governance repository",
+        "This is the Bridge4PS product repository",
         "does not authorize applying the Pipeline",
     ),
     "BOOTSTRAP_CONTRACT.md": (
@@ -240,4 +240,4 @@ if domain_leaks:
 if missing or bad_names or missing_skill_sources or missing_phrases or domain_leaks:
     sys.exit(1)
 
-print("Universal pipeline checks passed.")
+print("Bridge4PS target-repository pipeline-adoption checks passed.")
