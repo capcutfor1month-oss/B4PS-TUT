@@ -17,6 +17,7 @@ None. No OpenSpec change is open.
 - Research: completed and closed.
 - Architecture v0.1: founder-approved and locked.
 - Universal Agentic Project Pipeline adopted from `capcutfor1month-oss/project-Pipline` at source commit `e755ece0caf62f8e7df1a6c168727049c362cd4c`.
+- Pipeline adoption is complete: `scripts/check_pipeline.py` was repaired to validate this target repository truthfully (the inherited README assertion "This is a development-governance repository" was replaced with a target-repository-accurate assertion), and `python scripts/check_pipeline.py` passes with the result `Bridge4PS target-repository pipeline-adoption checks passed.`
 
 ## Registered skill sources
 

@@ -4,9 +4,14 @@
 
 Testing effort should match risk, not habit. A copy-only doc change and an auth-schema migration must not receive the same gate. This document defines the risk tiers, the required evidence per tier, and how that evidence maps into canonical reports.
 
-## Pipeline self-validation
+## Pipeline self-validation vs target-repository pipeline-adoption validation
 
-The universal pipeline itself is validated by `scripts/check_pipeline.py` and `.github/workflows/pipeline-checks.yml`, which check:
+Two distinct validations share the same mechanism (`scripts/check_pipeline.py` and `.github/workflows/pipeline-checks.yml`) but check different repositories:
+
+- **Pipeline self-validation** runs inside `capcutfor1month-oss/project-Pipline` itself and checks that repository's own canonical documents, including README assertions that this repository is the development-governance source (for example, "This is a development-governance repository").
+- **Target-repository pipeline-adoption validation** runs inside an adopted project repository, such as this one, and checks that the adopted governance files exist and carry the required governance language, that approved skill sources are recorded, and that the target repository's own README truthfully identifies itself as a product repository that has adopted the pipeline — not as the pipeline repository itself.
+
+Both validations check:
 
 - Required canonical files exist
 - Duplicate version-style Markdown names are absent
@@ -15,7 +20,7 @@ The universal pipeline itself is validated by `scripts/check_pipeline.py` and `.
 - Required governance language is present in canonical documents
 - Current status remains truthful
 
-This self-validation runs on every change to the pipeline repository itself and does not scale by risk — it is a fixed structural check.
+Each validation runs on every change to its own repository and does not scale by risk — it is a fixed structural check. This distinction does not change the risk tiers, specialized evidence profiles, or evidence mapping defined below, which govern product-level changes after adoption.
 
 ## Product-level risk classification
 
