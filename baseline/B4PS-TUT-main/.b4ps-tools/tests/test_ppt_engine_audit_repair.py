@@ -349,8 +349,10 @@ def test_f04_replacement_media_and_geometry_and_reopen(fixture_pptx_with_picture
 # --------------------------------------------------------------------------
 
 def test_f05_staging_copy_failure_leaves_no_temp_file(fixture_pptx):
+    # Superseded by Audit Repair 2 (F-05): staging failures are now typed
+    # as TransactionIOError specifically, not the broader DeckSourceError.
     with mock.patch("shutil.copy2", side_effect=OSError("simulated disk failure")):
-        with pytest.raises(ppt_engine.DeckSourceError):
+        with pytest.raises(ppt_engine.TransactionIOError):
             ppt_engine.create_working_copy(fixture_pptx)
     leaked = [n for n in os.listdir(tempfile.gettempdir()) if n.startswith("b4ps_engine_")]
     assert leaked == []
@@ -358,11 +360,13 @@ def test_f05_staging_copy_failure_leaves_no_temp_file(fixture_pptx):
 
 def test_f05_save_failure_cleans_up_staged_file_and_leaves_source_untouched(
         fixture_pptx, tmp_path):
+    # Superseded by Audit Repair 2 (F-05): save failures are now typed as
+    # TransactionIOError instead of leaking the raw OSError.
     output = tmp_path / "out.pptx"
     before_hash = ppt_engine.file_sha256(fixture_pptx)
     with mock.patch("pptx.presentation.Presentation.save",
                     side_effect=OSError("simulated save failure")):
-        with pytest.raises(OSError):
+        with pytest.raises(ppt_engine.TransactionIOError):
             ppt_engine.set_shape_text(fixture_pptx, str(output), 0, 0, "x")
     assert not output.exists()
     assert ppt_engine.file_sha256(fixture_pptx) == before_hash

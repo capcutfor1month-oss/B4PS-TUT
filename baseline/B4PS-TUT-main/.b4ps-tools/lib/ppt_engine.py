@@ -3,20 +3,22 @@ inspecting, and controlled-mutating .pptx files, built on python-pptx.
 
 Transaction contract every mutation primitive follows:
 
-    validate source + target + path safety
-    -> capture source integrity (hash)
+    validate source
+    -> validate target
+    -> validate source/output alias safety
+    -> hash source
     -> stage privately
     -> mutate
-    -> save temporary result
-    -> reopen
-    -> verify intended change
-    -> verify source still intact
+    -> save private result
+    -> reopen and validate result
+    -> verify source hash unchanged (the gate, immediately before publish)
     -> publish atomically according to overwrite policy
     -> cleanup
 
-No expected failure path may alter the source, corrupt an existing
-destination, leave a partial final destination, leak a temp file, or leak a
-raw (untyped) exception through the CLI.
+No expected failure path may alter the source, overwrite an existing
+destination when overwrite=False, expose a partial final destination, leave
+a successfully published output after a source-integrity failure, leak a
+temp file, or leak a raw (untyped) exception through the CLI.
 
 This module describes deck *structure* only - it assigns no semantic
 meaning to any shape (e.g. "this is the instructional red box"). That is
@@ -63,6 +65,15 @@ class ValidationError(SafeDeckError):
     """Generated output failed post-save reopen/content validation."""
 
 
+class TransactionIOError(SafeDeckError):
+    """A filesystem or library I/O failure occurred inside a mutation
+    transaction (working-copy creation, save, temporary-output
+    preparation, or publication) - normalized here so it never leaks as a
+    raw OSError/library exception. Distinct from DeckSourceError (bad
+    *input*) and OutputPathError (unsafe *destination*): this is for
+    failures during the transaction's own mechanics, not bad arguments."""
+
+
 # --------------------------------------------------------------------------
 # loading
 # --------------------------------------------------------------------------
@@ -80,10 +91,12 @@ def load_deck(path):
 
     Never modifies `path`. Never falls back to any other file - a bad path
     always fails, it is never silently substituted. Raises DeckSourceError
-    with a clear reason on any failure. This is the typed validation
-    boundary every mutation primitive must pass *before* hashing, staging,
-    or any other filesystem access on the source, so a missing/empty/
-    corrupt input always surfaces as DeckSourceError, never a bare OSError.
+    with a clear reason on any failure - including a readable ZIP archive
+    that simply isn't a PPTX package (python-pptx raises a plain KeyError
+    for that case; it is normalized here like every other open failure).
+    This is the typed validation boundary every mutation primitive must
+    pass *before* hashing, staging, or any other filesystem access on the
+    source.
     """
     if not os.path.exists(path):
         raise DeckSourceError("PPTX not found: %s" % path)
@@ -95,8 +108,10 @@ def load_deck(path):
         raise DeckSourceError("Not a valid .pptx package: %s (%s)" % (path, exc))
     except Exception as exc:
         # python-pptx / the underlying zip layer can raise a variety of
-        # exception types on a corrupt package; normalize them all to one
-        # typed, actionable failure rather than leaking the internal type.
+        # exception types on a corrupt or non-PPTX package (BadZipFile,
+        # KeyError for a missing required part, etc.); normalize them all
+        # to one typed, actionable failure rather than leaking the
+        # internal type.
         raise DeckSourceError("Could not open .pptx: %s (%s: %s)"
                                % (path, type(exc).__name__, exc))
 
@@ -105,8 +120,7 @@ def _validate_and_hash_source(input_path):
     """Validate `input_path` through the typed loading boundary, then hash
     it. Validation always runs first, so a missing/empty/corrupt input
     raises DeckSourceError here rather than `file_sha256` raising a bare
-    OSError first (the exact ordering bug this fixes: hashing used to run
-    before typed validation)."""
+    OSError first."""
     load_deck(input_path)
     return file_sha256(input_path)
 
@@ -203,7 +217,7 @@ def _assert_safe_output_path(input_path, output_path, overwrite):
     regardless of whether `output_path` exists.
 
     This is the primary protection against source aliasing - it does not
-    depend on the after-the-fact source-hash check callers also perform.
+    depend on the source-hash check callers also perform.
     """
     in_real = os.path.realpath(input_path)
     out_real = os.path.realpath(output_path)
@@ -235,70 +249,127 @@ def create_working_copy(path):
     caller's requested output path - so a failed or partial mutation can
     never corrupt either. Caller is responsible for removing the returned
     path when done. Exception-safe: if the copy itself fails partway, the
-    allocated temp path is removed rather than left behind.
+    allocated temp path is removed rather than left behind, and the
+    failure is normalized to a typed error.
     """
     load_deck(path)  # validate before copying anything
     fd, staged = tempfile.mkstemp(prefix="b4ps_engine_", suffix=".pptx")
     os.close(fd)
     try:
         shutil.copy2(path, staged)
-    except Exception as exc:
-        if os.path.exists(staged):
-            os.remove(staged)
-        raise DeckSourceError(
+    except OSError as exc:
+        _safe_remove(staged)
+        raise TransactionIOError(
             "Could not stage a working copy of %s: %s" % (path, exc))
     return staged
 
 
+def _safe_remove(path):
+    """Best-effort cleanup only. A failure removing a temp artifact must
+    never mask the transaction's real outcome or itself leak a raw
+    exception, so it is swallowed here rather than propagated."""
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
 def _publish_atomically(staged_path, output_path, overwrite):
     """Place a validated, already-saved staged file at `output_path`
-    according to the overwrite policy, without ever leaving a partially-
-    written file there and without emulating atomicity via a separate
-    exists-check followed by a write (that has a race window between the
-    check and the write; this does not).
+    according to the overwrite policy. Never emulates atomicity with a
+    separate exists-check followed by a write - that has a race window
+    between the check and the write.
 
-    overwrite=True: build the complete new file in a temp path in the same
-    directory (same filesystem, so the rename is atomic), then
-    `os.replace` it into place. Always allowed to replace whatever is
-    there.
+    Both branches first copy the complete staged content into a same-
+    directory temp file and fsync it, so the *entire* file exists on disk
+    before any filesystem operation makes it visible at `output_path` - the
+    final path can never be observed holding a partial file.
 
-    overwrite=False: open `output_path` itself with O_CREAT | O_EXCL, which
-    atomically creates the file only if it does not already exist -
-    failing immediately (and untouched) if anything appears there at any
-    point up to and including this call, including after an earlier
-    preflight check. If the exclusive create succeeds but the subsequent
-    write fails, the just-created (incomplete) file is removed so no
-    partial destination is left behind.
+    overwrite=True: `os.replace(tmp, output_path)` - an atomic rename on
+    the same filesystem, allowed to replace whatever is already there.
+
+    overwrite=False: `os.link(tmp, output_path)` - an atomic hard link
+    that fails with `FileExistsError` if `output_path` already exists,
+    without ever opening or writing to `output_path` itself first (unlike
+    an O_CREAT|O_EXCL stream, which creates the destination filename
+    before any bytes are written into it). The temp file is unlinked
+    afterward in both the success and failure case, so it is never left
+    behind; the underlying data survives via the new hard link on success.
     """
     out_dir = os.path.dirname(os.path.abspath(output_path)) or "."
-    os.makedirs(out_dir, exist_ok=True)
-
-    if overwrite:
-        fd, tmp_out = tempfile.mkstemp(prefix=".b4ps_publish_", suffix=".pptx", dir=out_dir)
-        os.close(fd)
-        try:
-            shutil.copy2(staged_path, tmp_out)
-            os.replace(tmp_out, output_path)
-        except Exception:
-            if os.path.exists(tmp_out):
-                os.remove(tmp_out)
-            raise
-        return
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as exc:
+        raise TransactionIOError(
+            "Could not prepare output directory %s: %s" % (out_dir, exc))
 
     try:
-        fd = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-    except FileExistsError:
-        raise OutputPathError(
-            "Output path was created by something else during the operation "
-            "(pass overwrite=True to replace it deliberately): %s" % output_path)
+        fd, tmp_out = tempfile.mkstemp(prefix=".b4ps_publish_", suffix=".pptx", dir=out_dir)
+    except OSError as exc:
+        raise TransactionIOError(
+            "Could not create a temporary file for publication in %s: %s"
+            % (out_dir, exc))
     try:
         with os.fdopen(fd, "wb") as dst:
             with open(staged_path, "rb") as src:
                 shutil.copyfileobj(src, dst)
-    except Exception:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        raise
+            dst.flush()
+            os.fsync(dst.fileno())
+    except OSError as exc:
+        _safe_remove(tmp_out)
+        raise TransactionIOError(
+            "Could not prepare output for publication: %s" % exc)
+
+    if overwrite:
+        try:
+            os.replace(tmp_out, output_path)
+        except OSError as exc:
+            _safe_remove(tmp_out)
+            raise TransactionIOError("Could not publish output: %s" % exc)
+        return
+
+    try:
+        os.link(tmp_out, output_path)
+    except FileExistsError:
+        _safe_remove(tmp_out)
+        raise OutputPathError(
+            "Output path was created by something else during the operation "
+            "(pass overwrite=True to replace it deliberately): %s" % output_path)
+    except OSError as exc:
+        _safe_remove(tmp_out)
+        raise TransactionIOError("Could not publish output: %s" % exc)
+    else:
+        _safe_remove(tmp_out)
+
+
+def _finalize_transaction(input_path, output_path, staged, overwrite, before_hash):
+    """Shared tail of every mutation transaction, run only after the
+    mutation has been saved to `staged` and validated by reopening it:
+
+        verify source hash unchanged (the primary gate - runs BEFORE any
+        publish is attempted, not after)
+        -> publish atomically according to overwrite policy
+        -> (defense-in-depth only) re-verify source hash unchanged
+
+    If the source changed after it was hashed and before this runs,
+    nothing is ever published - the integrity failure is raised and
+    `output_path` is left exactly as it was.
+    """
+    if file_sha256(input_path) != before_hash:
+        raise SafeDeckError(
+            "input file changed during the transaction - refusing to publish "
+            "(safety invariant violated): %s" % input_path)
+
+    _publish_atomically(staged, output_path, overwrite)
+
+    if file_sha256(input_path) != before_hash:
+        # Defense-in-depth only: the gate that actually prevents an
+        # unsafe publish is the check above, which runs before
+        # _publish_atomically is ever called.
+        raise SafeDeckError(
+            "input file changed during publication - safety invariant "
+            "violated: %s" % input_path)
 
 
 # --------------------------------------------------------------------------
@@ -348,6 +419,16 @@ def validate_mutated_output(output_path, expected_slide_count, slide_index,
     return True, "ok"
 
 
+def _save_staged(prs, staged):
+    """Save the in-memory mutated presentation to the staged path,
+    normalizing any filesystem/library failure into a typed error."""
+    try:
+        prs.save(staged)
+    except OSError as exc:
+        raise TransactionIOError(
+            "Could not save the mutated deck to a temporary file: %s" % exc)
+
+
 def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
                     overwrite=False):
     """Controlled mutation primitive: set one explicitly targeted shape's
@@ -355,9 +436,10 @@ def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
     shape_index) only - no fuzzy or semantic matching.
 
     Never mutates `input_path`. Stages the change on a private working
-    copy, validates the saved result by reopening it, and only then places
-    it at `output_path`. On any failure, nothing is written to
-    `output_path` and `input_path` is left untouched.
+    copy, validates the saved result by reopening it, verifies the source
+    is still unchanged, and only then places the result at `output_path`.
+    On any failure, nothing is written to `output_path` and `input_path`
+    is left untouched.
     """
     _assert_safe_output_path(input_path, output_path, overwrite)
     target = _preflight_resolve_shape(input_path, slide_index, shape_index)
@@ -373,26 +455,16 @@ def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
         shape = _resolve_shape(prs, slide_index, shape_index)
         shape.text_frame.text = new_text
         expected_slide_count = len(prs.slides)
-        prs.save(staged)
+        _save_staged(prs, staged)
 
         ok, detail = validate_mutated_output(
             staged, expected_slide_count, slide_index, shape_index, new_text)
         if not ok:
             raise ValidationError(detail)
 
-        _publish_atomically(staged, output_path, overwrite)
+        _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
     finally:
-        if os.path.exists(staged):
-            os.remove(staged)
-
-    if file_sha256(input_path) != before_hash:
-        # Defense-in-depth, not the primary protection (that is
-        # _assert_safe_output_path's alias rejection above) - source
-        # preservation is the core safety guarantee, so it is verified
-        # explicitly rather than only assumed.
-        raise SafeDeckError(
-            "input file changed during mutation - safety invariant violated: %s"
-            % input_path)
+        _safe_remove(staged)
 
     return output_path
 
@@ -455,8 +527,9 @@ def validate_geometry_output(output_path, expected_slide_count, slide_index,
 def _run_geometry_mutation(input_path, output_path, slide_index, shape_index,
                             geometry, overwrite):
     """Shared preflight -> staged-copy -> mutate -> save -> validate ->
-    atomic-publish flow for every geometry primitive below. `geometry`
-    values must already be validated by the caller before this runs.
+    verify-source -> atomic-publish flow for every geometry primitive
+    below. `geometry` values must already be validated by the caller
+    before this runs.
     """
     _assert_safe_output_path(input_path, output_path, overwrite)
     _preflight_resolve_shape(input_path, slide_index, shape_index)
@@ -472,22 +545,16 @@ def _run_geometry_mutation(input_path, output_path, slide_index, shape_index,
             "left": shape.left, "top": shape.top,
             "width": shape.width, "height": shape.height,
         }
-        prs.save(staged)
+        _save_staged(prs, staged)
 
         ok, detail = validate_geometry_output(
             staged, expected_slide_count, slide_index, shape_index, expected_geometry)
         if not ok:
             raise ValidationError(detail)
 
-        _publish_atomically(staged, output_path, overwrite)
+        _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
     finally:
-        if os.path.exists(staged):
-            os.remove(staged)
-
-    if file_sha256(input_path) != before_hash:
-        raise SafeDeckError(
-            "input file changed during mutation - safety invariant violated: %s"
-            % input_path)
+        _safe_remove(staged)
 
     return output_path
 
@@ -500,7 +567,7 @@ def move_shape(input_path, output_path, slide_index, shape_index, left, top,
     width/height to whatever the file already had.
 
     Never mutates `input_path`. On any failure (bad index, invalid
-    coordinate, save/validation failure) nothing is written to
+    coordinate, save/validation/integrity failure) nothing is written to
     `output_path`.
     """
     _validate_coordinate(left, "left")
@@ -533,8 +600,9 @@ def set_shape_geometry(input_path, output_path, slide_index, shape_index,
     will use. All four values are validated *before* the working copy is
     even staged, so an invalid value fails cleanly with nothing written
     anywhere and no shape attribute touched, even in memory. Either the
-    complete requested geometry is applied, saved, and verified, or the
-    whole operation raises and `output_path` is left untouched.
+    complete requested geometry is applied, saved, verified, and
+    published, or the whole operation raises and `output_path` is left
+    untouched.
     """
     _validate_coordinate(left, "left")
     _validate_coordinate(top, "top")
@@ -594,22 +662,30 @@ def validate_picture_replacement(output_path, expected_slide_count, slide_index,
 
 def _drop_relationship_if_unreferenced(slide, part, rId):
     """Remove the relationship `rId` from `part`'s relationships collection
-    only if no remaining `a:blip` element anywhere in `slide`'s shape tree
-    still references it. python-pptx's own package writer serializes only
-    parts still reachable via some relationship (a graph walk from the
-    package root), so once the last relationship referencing an image part
-    is dropped, that image part is automatically absent from the next
-    save - no separate manual part deletion is needed or attempted here.
+    only if no remaining `a:blip` element *anywhere in the slide's XML
+    tree* still references it - not only inside the shape tree (`p:spTree`).
+    Image relationships are not used only inside shapes: a slide background
+    (`p:cSld/p:bg/p:bgPr/a:blipFill/a:blip`) is a sibling of `p:spTree`
+    under `p:cSld`, and any other valid slide element that carries a blip
+    would be reachable the same way. Scanning the whole `<p:sld>` element
+    (rather than just its `spTree` child) is what makes this correct for
+    all of those cases, not only ordinary picture shapes.
 
-    Safe for the shared-image case: if another picture (on this slide, or
-    reusing the same relationship id python-pptx assigns when the same
-    image content is related to the same part more than once) still uses
-    `rId`, the relationship - and therefore the underlying image part - is
-    left exactly as-is.
+    python-pptx's own package writer serializes only parts still reachable
+    via some relationship (a graph walk from the package root), so once
+    the last relationship referencing an image part is dropped, that image
+    part is automatically absent from the next save - no separate manual
+    part deletion is needed or attempted here.
+
+    Safe for the shared-image case: if another picture, the slide
+    background, or any other element still uses `rId` (python-pptx assigns
+    the same relationship id when the same image content is related to the
+    same part more than once, which is exactly how a picture and a
+    same-image background end up sharing one), the relationship - and
+    therefore the underlying image part - is left exactly as-is.
     """
-    spTree = slide._element.spTree
     still_referenced = any(
-        blip.get(qn("r:embed")) == rId for blip in spTree.iter(qn("a:blip")))
+        blip.get(qn("r:embed")) == rId for blip in slide._element.iter(qn("a:blip")))
     if not still_referenced:
         part.rels.pop(rId)
 
@@ -630,12 +706,14 @@ def replace_picture(input_path, output_path, slide_index, shape_index, image_pat
     Only the picture's image relationship (`p:blipFill/a:blip/@r:embed`) is
     repointed at a newly-added image part - this is the smallest reliable
     OOXML-level operation for this, isolated entirely behind this function
-    (including the stale-relationship cleanup below); no other code in
-    this module or its callers touches raw OOXML for image handling. After
-    repointing, the old relationship is dropped if nothing else on the
-    slide still references it, so a replaced screenshot does not linger in
-    the saved package as unused (and potentially sensitive) media; a
-    relationship still shared by another picture is left untouched.
+    (including the stale-relationship cleanup, which inspects the whole
+    slide XML tree, not just shapes - see `_drop_relationship_if_unreferenced`);
+    no other code in this module or its callers touches raw OOXML for
+    image handling. After repointing, the old relationship is dropped if
+    nothing else on the slide still references it, so a replaced
+    screenshot does not linger in the saved package as unused (and
+    potentially sensitive) media; a relationship still shared by another
+    picture or the slide background is left untouched.
 
     Rejects a target shape that is not a picture, and a replacement image
     that is missing, empty, or unreadable - both before anything is
@@ -672,7 +750,7 @@ def replace_picture(input_path, output_path, slide_index, shape_index, image_pat
             _drop_relationship_if_unreferenced(slide, slide_part, old_rId)
 
         expected_slide_count = len(prs.slides)
-        prs.save(staged)
+        _save_staged(prs, staged)
 
         ok, detail = validate_picture_replacement(
             staged, expected_slide_count, slide_index, shape_index,
@@ -680,14 +758,8 @@ def replace_picture(input_path, output_path, slide_index, shape_index, image_pat
         if not ok:
             raise ValidationError(detail)
 
-        _publish_atomically(staged, output_path, overwrite)
+        _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
     finally:
-        if os.path.exists(staged):
-            os.remove(staged)
-
-    if file_sha256(input_path) != before_hash:
-        raise SafeDeckError(
-            "input file changed during mutation - safety invariant violated: %s"
-            % input_path)
+        _safe_remove(staged)
 
     return output_path
