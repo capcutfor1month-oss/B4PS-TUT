@@ -596,18 +596,24 @@ def cmd_apply_text_edit(args):
 # workflow. No semantic interpretation of shape meaning happens here.
 
 def cmd_engine_inspect(args):
+    # describe_deck() = the canonical structural inspection (inspect_deck)
+    # plus the source path as separate, non-canonical provenance metadata -
+    # so the canonical structure stays comparable across paths (two
+    # byte-identical files at different paths inspect identically) while
+    # the CLI still reports which file was inspected.
     try:
-        result = ppt_engine.inspect_deck(args.input)
+        result = ppt_engine.describe_deck(args.input)
     except ppt_engine.SafeDeckError as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 1
+    structure = result["structure"]
     if args.json:
         print(json.dumps(result, indent=2))
     else:
         print("%s\n  slides: %d  (%d x %d EMU)"
-              % (result["path"], result["slide_count"],
-                 result["slide_width"], result["slide_height"]))
-        for s in result["slides"]:
+              % (result["source_path"], structure["slide_count"],
+                 structure["slide_width"], structure["slide_height"]))
+        for s in structure["slides"]:
             print("  slide %d: %d shape(s)" % (s["slide_index"], s["shape_count"]))
             for sh in s["shapes"]:
                 text = (" text=%r" % sh["text"]) if sh["text"] else ""

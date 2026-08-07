@@ -34,8 +34,12 @@ def test_engine_inspect_json(tmp_path):
     result = _run("engine-inspect", "--input", str(fixture), "--json")
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["slide_count"] == 1
-    assert payload["slides"][0]["shapes"][0]["text"] == "hello"
+    # F-08: canonical structure is nested under "structure", separate from
+    # the non-canonical "source_path" provenance metadata.
+    assert payload["source_path"] == os.path.abspath(str(fixture))
+    structure = payload["structure"]
+    assert structure["slide_count"] == 1
+    assert structure["slides"][0]["shapes"][0]["text"] == "hello"
 
 
 def test_engine_inspect_missing_file_fails_clearly():
@@ -57,4 +61,4 @@ def test_engine_set_text_end_to_end(tmp_path):
 
     verify = _run("engine-inspect", "--input", str(output), "--json")
     payload = json.loads(verify.stdout)
-    assert payload["slides"][0]["shapes"][0]["text"] == "updated"
+    assert payload["structure"]["slides"][0]["shapes"][0]["text"] == "updated"

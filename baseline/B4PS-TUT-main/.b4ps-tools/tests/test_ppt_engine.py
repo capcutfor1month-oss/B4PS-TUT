@@ -120,7 +120,9 @@ def test_repeated_inspection_is_deterministic(fixture_pptx):
 # --------------------------------------------------------------------------
 
 def test_output_path_must_differ_from_input(fixture_pptx):
-    with pytest.raises(ppt_engine.OutputPathError, match="must not resolve"):
+    # F-01 hardened this check's message wording (now also covers
+    # symlink/alias resolution, not just identical path strings).
+    with pytest.raises(ppt_engine.OutputPathError, match="resolves to the same file"):
         ppt_engine.set_shape_text(fixture_pptx, fixture_pptx, 0, 0, "x")
 
 
