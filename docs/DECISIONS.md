@@ -61,3 +61,15 @@ Durable decisions for the Bridge4PS Documentation Engineer repository. This log 
 **What was deliberately not done:** the 8 missing LFS binaries were not obtained, fabricated, or otherwise resolved (out of scope, unchanged limitation); `lib/plan.py`, `lib/match.py`, `lib/anchors.py`, `lib/layout.py`, `lib/geometry.py` were inspected for the same defect classes but not found to need a fix in this pass, and were not otherwise modified; no Safe PPT Engine feature, semantic-annotation, or workflow-intelligence work was started; the canonical ZIP `baseline/source-artifacts/B4PS-TUT-main.zip` was not touched.
 
 **Status:** Active.
+
+---
+
+## PROJ-007 — Safe PPT Engine Build 1
+
+**Decision:** Built the first Safe PPT Engine layer at `baseline/B4PS-TUT-main/.b4ps-tools/lib/ppt_engine.py`, using `python-pptx` (added to `requirements.txt`) rather than extending the baseline's existing hand-rolled XML-surgery approach in `lib/deck.py` — the two serve different purposes (`deck.py` is a purpose-built, high-performance surgical writer scoped to the two known production decks and their known shape conventions; the engine needs to safely load and describe *any* explicit `.pptx` path generically, which `python-pptx` already does safely and correctly). The engine provides: `load_deck` (typed, never-fallback loading), `inspect_deck` (deterministic structural JSON with no semantic interpretation), `create_working_copy` (mutation always staged off both the original and the final output path), and `set_shape_text` (the one controlled mutation primitive built this pass — explicit `(slide_index, shape_index)` targeting only, validated by reopening the saved result before it is placed at the caller's output path). Exposed via `engine-inspect` and `engine-set-text` CLI commands. Verified with 21 new tests (37 total) against synthetic fixtures built programmatically with `python-pptx`/`Pillow` — the 8 unavailable Git LFS assets were not touched.
+
+**Reason:** The approved build order requires a safe, deterministic mechanical foundation (read/inspect/copy/mutate/save/validate/preserve) before any Documentation Intelligence or semantic capability can be layered on top. Establishing the pattern with one real, tested mutation primitive (text update) proves the safety invariants — source never modified, output path never collides, invalid input fails before mutation, output is reopened and content-verified after save — without yet committing to which richer primitives (move/resize/image-replace) Documentation Intelligence will actually need.
+
+**What was deliberately not done:** no semantic shape identification, fuzzy matching, screenshot intelligence, or Documentation Intelligence; no additional mutation primitives beyond `set_shape_text`; no changes to `lib/deck.py`, `lib/plan.py`, `lib/match.py`, `lib/anchors.py`, `lib/layout.py`, or `lib/geometry.py` (existing anchor/matching workflow is untouched and independent of the new engine layer); the 8 missing LFS binaries were not obtained or fabricated; the canonical ZIP was not touched.
+
+**Status:** Active.
