@@ -53,7 +53,7 @@ def test_engine_resize_shape_cli(tmp_path):
 
     verify = _run("engine-inspect", "--input", str(output), "--json")
     payload = json.loads(verify.stdout)
-    shape = payload["slides"][0]["shapes"][0]
+    shape = payload["structure"]["slides"][0]["shapes"][0]
     assert shape["width"] == 1828800
     assert shape["height"] == 914400
 
@@ -71,7 +71,7 @@ def test_engine_set_geometry_cli(tmp_path):
 
     verify = _run("engine-inspect", "--input", str(output), "--json")
     payload = json.loads(verify.stdout)
-    shape = payload["slides"][0]["shapes"][0]
+    shape = payload["structure"]["slides"][0]["shapes"][0]
     assert (shape["left"], shape["top"], shape["width"], shape["height"]) == (
         457200, 457200, 914400, 457200)
 
@@ -106,7 +106,7 @@ def test_engine_replace_image_cli(tmp_path):
 
     verify = _run("engine-inspect", "--input", str(output), "--json")
     payload = json.loads(verify.stdout)
-    assert payload["slides"][0]["shapes"][1]["has_image"] is True
+    assert payload["structure"]["slides"][0]["shapes"][1]["has_image"] is True
 
 
 def test_engine_replace_image_rejects_non_picture_target_cli(tmp_path):
