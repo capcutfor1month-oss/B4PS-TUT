@@ -1,47 +1,48 @@
-# Verification Report — Safe PPT Engine (Builds 1–2, Audit Repair 1)
+# Verification Report — Safe PPT Engine (Builds 1–2, Audit Repairs 1–2)
 
 ## Founder summary
 
 ### Where things stand
 
-The Safe PPT Engine's mechanical read/inspect/mutate primitives (Build 1: `set_shape_text`; Build 2: `move_shape`, `resize_shape`, `set_shape_geometry`, `replace_picture`) passed their own implementation test suites when built, but this record was not created at the time — `docs/TESTING.md` requires every change to record its risk classification and canonical verification evidence, and Builds 1 and 2 were marked complete in `docs/CURRENT.md`/`docs/DECISIONS.md` without that recordkeeping. This report supplies it retroactively, truthfully, without changing what was actually built in Builds 1–2.
+The Safe PPT Engine's mechanical read/inspect/mutate primitives (Build 1: `set_shape_text`; Build 2: `move_shape`, `resize_shape`, `set_shape_geometry`, `replace_picture`) have been through two rounds of independent Codex audit and two matching repair rounds. Every finding from both audits (F-01–F-08, then F-02/F-04/F-05/F-06/R-01/R-02) is fixed and tested by Claude's own suite. **A third independent Codex re-audit, of this repair (Audit Repair 2), has not yet been performed** — see `audit-report.md` for the full audit history and `spec.md` for the change classification this file's evidence is scoped against.
 
 ### Why this matters
 
-An independent Codex audit of Builds 1–2 subsequently found 8 defects (F-01 through F-08), 1 critical and 2 high-severity, in exactly the kind of transaction-safety guarantees this engine exists to provide (source-file aliasing, publish-race conditions, error typing, stale media, and deterministic output). Builds 1 and 2 must **not** be described as having passed independent safety audit — they had not yet been audited when marked complete, and once audited, they failed with the findings below. This repair (Audit Repair 1) addresses all 8 findings in the same commit that adds this record.
+This is safety-critical local-file infrastructure: it exists specifically so a mutation can never corrupt the one copy of a source PPTX. Two audit rounds already found real defects in exactly that guarantee (source aliasing, publication races, incomplete relationship cleanup). Trusting the engine's current state as "safe" should rest on independent verification, not the implementer's own tests alone — which is why a third audit round is the recorded next action, not optional.
 
 ### What has already happened
 
-Repair implemented, tested, and merged. See the companion PR and `docs/DECISIONS.md` (PROJ-009) for the technical account of each fix.
+Repair implemented and tested; see `docs/DECISIONS.md` (PROJ-009, PROJ-010) for the technical account of each fix, and `audit-report.md` for the audit-verdict history.
 
 ### What happens next
 
-An independent Codex re-audit of the repaired engine is the required next step before any further reliance on these transaction-safety guarantees. It is not performed by this report or by Claude.
+An independent Codex re-audit of Audit Repair 2. Not performed as part of this record.
 
 ### Founder action or decision
 
-None required to merge this record. Founder should be aware that re-audit, not another Claude implementation milestone, is the appropriate next action per the audit-repair task's own instruction.
+None required to merge this record. Separately, truthful founder-preview status (below) shows that the Standard-tier "founder usability testing" evidence layer required by `docs/TESTING.md` has not been performed for this engine — no human has visually confirmed a Safe-PPT-Engine-generated `.pptx` renders correctly in real PowerPoint. That is a genuinely open gate, not fabricated as complete here.
 
 ### Recommended option and reason
 
-Proceed to independent re-audit before building further capability (e.g. Editorial Memory, Documentation Intelligence) on top of this engine, since those layers would inherit any residual defect in the mechanical foundation.
+Commission the independent Codex re-audit before building further capability on this engine. Separately, and lower priority, arrange a founder/human preview of at least one generated output in real PowerPoint before this engine is relied upon for actual Bridge4PS deck edits (not required before merging this repair, which is bounded engine-correctness work, but required before the engine's output is trusted end-to-end).
 
 ## Technical evidence
 
 ### Change verified
 
-Safe PPT Engine Build 1 (`set_shape_text`), Build 2 (`move_shape`, `resize_shape`, `set_shape_geometry`, `replace_picture`), and Audit Repair 1 (fixes for Codex findings F-01–F-08) — all in `baseline/B4PS-TUT-main/.b4ps-tools/lib/ppt_engine.py` and `b4ps.py`.
+Safe PPT Engine Build 1 (`set_shape_text`), Build 2 (`move_shape`, `resize_shape`, `set_shape_geometry`, `replace_picture`), Audit Repair 1 (F-01–F-08), and Audit Repair 2 (F-02, F-04, F-05, F-06, R-01, R-02) — all in `baseline/B4PS-TUT-main/.b4ps-tools/lib/ppt_engine.py` and `b4ps.py`.
 
 ### Classification
 
-- **Base tier:** Standard (per `docs/TESTING.md`) — new engine capability, not authentication/payments/secrets/tenant-isolation/production-migration (which would be High), and not a copy-only/non-behavioural change (which would be Trivial).
-- **Rationale:** This is file-handling infrastructure that mutates PowerPoint files and is explicitly designed to protect an irreplaceable source asset. Given that safety purpose, verification for this component intentionally exceeds typical Standard-tier depth — it includes adversarial/fault-injection tests (symlink aliasing, publish races, staged-copy/save/validation/publication failure injection) beyond what a normal Standard-tier feature would require, without this change actually being High tier (no auth, payment, secret, or tenant-isolation surface exists here).
-- **Applicable specialized evidence profiles (per `docs/TESTING.md`):** Data-sensitive — the engine performs bulk file writes (a full `.pptx` package rewrite per mutation) and this report documents the data-preservation guarantees (source-hash-unchanged, atomic no-partial-output publication) in lieu of a database migration/rollback plan, since there is no database or migration involved. UI-sensitive: not applicable (no browser-rendered UI).
-- **Independent-audit requirement:** An independent Codex audit was performed after Builds 1–2 (unplanned at merge time, but exactly the kind of scrutiny this file-safety-critical component warrants) and found F-01–F-08. Audit Repair 1 (this change) is required to close those findings. A second independent Codex re-audit of the repair is the recorded next action — not yet performed as of this report.
+See `spec.md` → "Classification" for the canonical record (base tier, rationale, applicable profiles, audit requirement), per `docs/TESTING.md` → "Canonical recording surface", which specifies classification belongs in the change's `spec.md`. Summary: **Standard** base tier, **Data-sensitive** profile applies, **UI-sensitive** does not apply, independent Codex audit explicitly required and performed twice (see `audit-report.md`).
+
+### Builder review
+
+Performed by the implementing session at each stage: manual reproduction of each Codex finding against the pre-repair code before writing a fix; a full diff review of each PR for scope creep before commit; and, for Audit Repair 2 specifically, a deliberate check that the fix for R-02 test-quality findings actually strengthens the *mechanism* proof (call-order and call-count assertions, not only end-state filesystem checks). This is builder-side review only — it is not, and does not substitute for, the independent Codex audit `docs/TESTING.md` requires as the higher-order gate for this component.
 
 ### Environment
 
-Python 3.14, `pytest` 9.1.1, dependencies from `requirements-dev.txt` (`Pillow`, `numpy`, `opencv-python-headless`, `python-pptx`, `pytest`) installed into an isolated virtualenv. macOS (Darwin), local filesystem (case-sensitive APFS volume under `/private/tmp`).
+Python 3.14, `pytest` 9.1.1, dependencies from `requirements-dev.txt` (`Pillow`, `numpy`, `opencv-python-headless`, `python-pptx`, `pytest`) installed into an isolated virtualenv. macOS (Darwin), local filesystem (case-sensitive APFS volume).
 
 ### Commands executed
 
@@ -53,30 +54,45 @@ python scripts/check_pipeline.py   # run from repository root
 
 ### Checks passed
 
-- `python -m pytest tests/` → all tests passed (Build 1: 37, Build 2: +35 = 72, Audit Repair 1: +48 = 120 total — see the audit-repair PR description for the exact final count).
-- All pre-existing Build 1/2 tests pass unmodified except two explicitly justified changes: one error-message wording assertion (F-01 improved the message text) and the CLI JSON-shape assertions in `test_engine_cli.py`/`test_engine_cli_geometry_image.py` (F-08 separates canonical structure from source-path metadata in `engine-inspect --json` output).
+- `python -m pytest tests/` → **185 passed** (Build 1: 37; Build 2: +35 = 72; Audit Repair 1: +48 = 120; Audit Repair 2: +65 = 185).
+- All pre-existing tests pass unmodified except explicitly justified changes: two Audit Repair 1 wording/JSON-shape updates (documented in the prior version of this report and in `docs/DECISIONS.md` PROJ-009), and two Audit Repair 1 test-body updates in this round (`test_f05_staging_copy_failure_leaves_no_temp_file`, `test_f05_save_failure_cleans_up_staged_file_and_leaves_source_untouched` — both now assert the more specific `TransactionIOError` that F-05's stronger typing introduces, in place of the broader `DeckSourceError`/raw `OSError` they previously accepted).
 - `python scripts/check_pipeline.py` → `Bridge4PS target-repository pipeline-adoption checks passed.`
-- Canonical archive `baseline/source-artifacts/B4PS-TUT-main.zip` SHA-256 unchanged throughout Builds 1, 2, and this repair.
-- Manual reproduction confirmed each of F-01–F-08 was real against the pre-repair code, and confirmed fixed against the repaired code (symlink-alias rejection, exclusive-create no-overwrite publish, typed `DeckSourceError` before hashing, stale-media removal verified against actual ZIP package contents, exception-safe staging, non-picture rejection before staging with no temp file created, and identical structural inspection for two byte-identical files at different paths).
+- Canonical archive `baseline/source-artifacts/B4PS-TUT-main.zip` SHA-256 unchanged throughout Builds 1, 2, and both repairs.
+- Manual reproduction confirmed each of F-02, F-04, F-05, R-01, R-02 was real against the pre-Repair-2 code and fixed against the repaired code; F-01/F-03/F-07/F-08 confirmed still closed (regression tests included).
+- A genuine (unmocked) filesystem failure was also found and fixed during this round: `_publish_atomically`'s own `tempfile.mkstemp` call was not wrapped in typed-error handling, so a permission-denied output directory produced a raw traceback at the CLI. Found by a real (not mocked) read-only-directory test, fixed, and now covered by that same test.
 
 ### Checks failed
 
-None outstanding as of this report. (Historical: the Codex audit that produced F-01–F-08 is the "failure" this report exists to record truthfully — see Founder summary.)
+None outstanding in this repository's own test suite as of this report. (Historical: both Codex audits are the "failures" this report exists to record truthfully — see `audit-report.md`.)
 
-### Failure summary
+### Pipeline / CI evidence
 
-Not applicable — no unresolved failing check at time of writing. See `docs/DECISIONS.md` (PROJ-009) for the full defect-by-defect repair account.
+`python scripts/check_pipeline.py` passes locally (see above); the companion PR's GitHub Actions `validate` check (`.github/workflows/pipeline-checks.yml`, running the same script) is the CI-equivalent gate and is expected to pass identically. This report is updated with the actual CI result once the PR is inspected, per the repair task's own workflow.
+
+### Founder-preview requirement
+
+Per `docs/TESTING.md`, Standard-tier changes require "founder usability testing" as part of required evidence. **Status: PENDING — genuinely open, not waived.** No human has opened a Safe-PPT-Engine-generated `.pptx` in real PowerPoint (or any real presentation viewer) to visually confirm the mutation looks correct; all verification here is programmatic (reopen-and-check-attributes via python-pptx). This is recorded truthfully as an open gate rather than marked complete, per the explicit instruction not to fabricate approvals or completions that did not happen.
+
+### Profile-specific gates (Data-sensitive)
+
+| Required evidence | Status | Detail |
+|---|---|---|
+| Migration test | N/A (approved) | No database or schema is involved; the "migration" here is a whole-file rewrite, not a schema migration. |
+| Data-preservation check | Complete | Source-hash-unchanged verified before and after every mutation (defense-in-depth check after, primary gate before publish per R-01); adversarial symlink/alias tests (F-01); dedicated tests per mutation family. |
+| Tenancy-isolation check | N/A (approved) | This is a single-process local-file library with no multi-tenant concept; there is no tenant boundary to isolate. |
+| Rollback plan | Complete | The engine never writes in place — the original input file is never the write target of any operation (enforced by `_assert_safe_output_path`). "Rollback" for a mutation is simply: the original file was never touched, so no rollback action is needed on the source; for the *generated output*, discarding it (or not merging the PR that would ship it) is the rollback. |
 
 ### Files changed
 
-`lib/ppt_engine.py`, `b4ps.py`, `tests/test_ppt_engine.py` (2 assertion updates), `tests/test_engine_cli.py`, `tests/test_engine_cli_geometry_image.py`, new `tests/test_ppt_engine_audit_repair.py`, `docs/CURRENT.md`, `docs/DECISIONS.md`, this file.
+`lib/ppt_engine.py`, `b4ps.py`, `tests/test_ppt_engine.py` (2 F-01-era assertions, unchanged this round), `tests/test_engine_cli.py`, `tests/test_engine_cli_geometry_image.py`, `tests/test_ppt_engine_audit_repair.py` (2 assertion updates this round), new `tests/test_ppt_engine_audit_repair_2.py`, `docs/CURRENT.md`, `docs/DECISIONS.md`, `openspec/changes/safe-ppt-engine/spec.md` (new), `openspec/changes/safe-ppt-engine/audit-report.md` (new), this file.
 
 ### Remaining uncertainty
 
-- Independent Codex re-audit of this repair has not been performed.
+- Independent Codex re-audit of Audit Repair 2 has not been performed.
+- Founder/human preview of generated output in real PowerPoint has not been performed (see above — genuinely pending, not a fabricated pass).
 - The 8 historically-unavailable Git LFS production assets (including both production decks) remain unresolved and were not needed by any test here.
-- `_publish_atomically`'s `overwrite=False` exclusive-create path has not been exercised against non-POSIX filesystems (e.g. network shares with weak `O_EXCL` guarantees); behavior there is standard-library-dependent and not separately verified in this environment.
+- The atomic no-overwrite publish path (`os.link`) has not been exercised against non-POSIX or non-hardlink-capable filesystems (e.g. some network shares); behavior there is standard-library-dependent and not separately verified in this environment.
 
 ### Recommended next action
 
-Independent Codex re-audit of the repaired Safe PPT Engine. Editorial Memory and Documentation Intelligence remain not started and are out of scope until re-audit clears.
+Independent Codex re-audit of Audit Repair 2. Editorial Memory and Documentation Intelligence remain not started and are out of scope until re-audit clears.
