@@ -149,6 +149,23 @@ What *is* checked automatically:
   than silently trusted, since this machine has no LibreOffice to render an
   actual preview against
 
+## Safe PPT Engine (generic, deck-agnostic primitives)
+
+Separate from the anchor/matching workflow above, `lib/ppt_engine.py` provides
+mechanical, non-destructive primitives for any explicit `.pptx` path - not
+just the two registered decks. It never modifies its input, never falls back
+to another file, and always validates a mutation by reopening the saved
+output before treating it as done.
+
+```bash
+python b4ps.py engine-inspect --input some.pptx --json   # structural inspection, no writes
+python b4ps.py engine-set-text --input some.pptx --output out.pptx \
+    --slide 0 --shape 2 --text "New wording"              # one controlled mutation
+```
+
+This is the mechanical foundation only - it assigns no meaning to what a
+shape represents. That is future Documentation Intelligence work.
+
 ## How it decides
 
 For each marking box, three independent checks:

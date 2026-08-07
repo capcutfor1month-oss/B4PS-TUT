@@ -22,7 +22,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import anchors, config, deck as deck_io, plan as planner  # noqa: E402
+from lib import anchors, config, deck as deck_io, plan as planner, ppt_engine  # noqa: E402
 
 NAME_RE = re.compile(r"^slide[_\-\s]*(\d+)(?:[_\-]([a-z0-9]+))?", re.I)
 
@@ -587,6 +587,47 @@ def cmd_apply_text_edit(args):
     return 0
 
 
+# --------------------------------------------------------------------------
+# Safe PPT Engine (mechanical primitives: inspect / controlled mutation)
+# --------------------------------------------------------------------------
+#
+# These operate on any explicit --input path, not the DECKS registry above -
+# this is the generic, deck-agnostic engine layer, not the anchor/matching
+# workflow. No semantic interpretation of shape meaning happens here.
+
+def cmd_engine_inspect(args):
+    try:
+        result = ppt_engine.inspect_deck(args.input)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print("%s\n  slides: %d  (%d x %d EMU)"
+              % (result["path"], result["slide_count"],
+                 result["slide_width"], result["slide_height"]))
+        for s in result["slides"]:
+            print("  slide %d: %d shape(s)" % (s["slide_index"], s["shape_count"]))
+            for sh in s["shapes"]:
+                text = (" text=%r" % sh["text"]) if sh["text"] else ""
+                print("    [%d] %s (%s)%s" % (sh["shape_index"], sh["name"],
+                                              sh["shape_type"], text))
+    return 0
+
+
+def cmd_engine_set_text(args):
+    try:
+        out = ppt_engine.set_shape_text(args.input, args.output, args.slide,
+                                        args.shape, args.text,
+                                        overwrite=args.overwrite)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    print("wrote %s (source untouched)" % out)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -642,6 +683,22 @@ def main():
     p.add_argument("report")
     p.add_argument("--confirm", action="store_true")
     p.set_defaults(fn=cmd_apply_text_edit)
+
+    p = sub.add_parser("engine-inspect",
+                       help="Safe PPT Engine: structural inspection of any .pptx")
+    p.add_argument("--input", required=True)
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+    p.set_defaults(fn=cmd_engine_inspect)
+
+    p = sub.add_parser("engine-set-text",
+                       help="Safe PPT Engine: controlled mutation, set one shape's text")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--slide", type=int, required=True)
+    p.add_argument("--shape", type=int, required=True)
+    p.add_argument("--text", required=True)
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=cmd_engine_set_text)
 
     args = parser.parse_args()
     try:
