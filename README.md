@@ -20,7 +20,7 @@ Bridge4PS Documentation Engineer is a PPT/tutorial-maintenance automation projec
 - Architecture v0.1: founder-approved and locked (`docs/ARCHITECTURE.md`).
 - Detailed architecture specification: not yet migrated into GitHub. Do not reconstruct or invent it here.
 - Product implementation: not started.
-- Canonical raw baseline (`B4PS-TUT-main.zip`): designated but not yet imported or verified in this repository.
+- Canonical raw baseline (`B4PS-TUT-main.zip`): the complete, unmodified archive is committed at `baseline/source-artifacts/B4PS-TUT-main.zip` and is the authority for exact raw-baseline fidelity. The GitHub materialization at `baseline/B4PS-TUT-main/` contains 50 of 58 source files byte-for-byte; 8 unresolved Git LFS pointer entries are intentionally omitted from that extracted tree (GitHub rejects unresolved LFS references) but remain preserved in the canonical ZIP. See `docs/CURRENT.md` for the full manifest.
 
 ## Pipeline reference
 

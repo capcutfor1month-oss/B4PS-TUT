@@ -44,6 +44,8 @@ These documents are adopted from `capcutfor1month-oss/project-Pipline` at source
 - `prompts/`
 - `scripts/`
 - `.github/`
+- `baseline/source-artifacts/B4PS-TUT-main.zip` — the unmodified canonical raw archive, committed verbatim. This is the authority for exact raw-baseline fidelity; it contains all 58 original source files.
+- `baseline/B4PS-TUT-main/` — the extracted GitHub materialization of that archive, kept isolated from both the Bridge4PS canonical documents above and the adopted pipeline documents below so its provenance stays distinguishable. Contains 50 of the 58 source files, byte-for-byte identical to the ZIP; 8 unresolved Git LFS pointer entries are intentionally omitted here (GitHub rejects unresolved LFS references) but remain preserved in the canonical ZIP — see `docs/CURRENT.md` for the manifest. Its own top-level files (for example its own `CLAUDE.md`) are raw baseline evidence, not this repository's governance layer.
 
 ## Anti-duplication rule
 
