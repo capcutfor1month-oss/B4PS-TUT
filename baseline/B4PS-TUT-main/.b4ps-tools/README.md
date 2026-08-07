@@ -159,12 +159,29 @@ output before treating it as done.
 
 ```bash
 python b4ps.py engine-inspect --input some.pptx --json   # structural inspection, no writes
+
+# All coordinates/dimensions are EMU (914400 = 1 inch), python-pptx's and
+# OOXML's own native unit.
 python b4ps.py engine-set-text --input some.pptx --output out.pptx \
-    --slide 0 --shape 2 --text "New wording"              # one controlled mutation
+    --slide 0 --shape 2 --text "New wording"
+
+python b4ps.py engine-move-shape --input some.pptx --output out.pptx \
+    --slide 0 --shape 2 --left 914400 --top 914400          # left/top only
+
+python b4ps.py engine-resize-shape --input some.pptx --output out.pptx \
+    --slide 0 --shape 2 --width 1828800 --height 914400     # width/height only
+
+python b4ps.py engine-set-geometry --input some.pptx --output out.pptx \
+    --slide 0 --shape 2 \
+    --left 457200 --top 457200 --width 1828800 --height 914400   # all four, atomically
+
+python b4ps.py engine-replace-image --input some.pptx --output out.pptx \
+    --slide 0 --shape 2 --image new.png   # preserves the existing frame; rejects a non-picture target
 ```
 
 This is the mechanical foundation only - it assigns no meaning to what a
-shape represents. That is future Documentation Intelligence work.
+shape represents, and does no fuzzy/semantic shape selection. That is
+future Documentation Intelligence work.
 
 ## How it decides
 
