@@ -628,6 +628,51 @@ def cmd_engine_set_text(args):
     return 0
 
 
+def cmd_engine_move_shape(args):
+    try:
+        out = ppt_engine.move_shape(args.input, args.output, args.slide, args.shape,
+                                    args.left, args.top, overwrite=args.overwrite)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    print("wrote %s (source untouched)" % out)
+    return 0
+
+
+def cmd_engine_resize_shape(args):
+    try:
+        out = ppt_engine.resize_shape(args.input, args.output, args.slide, args.shape,
+                                      args.width, args.height, overwrite=args.overwrite)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    print("wrote %s (source untouched)" % out)
+    return 0
+
+
+def cmd_engine_set_geometry(args):
+    try:
+        out = ppt_engine.set_shape_geometry(
+            args.input, args.output, args.slide, args.shape,
+            args.left, args.top, args.width, args.height, overwrite=args.overwrite)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    print("wrote %s (source untouched)" % out)
+    return 0
+
+
+def cmd_engine_replace_image(args):
+    try:
+        out = ppt_engine.replace_picture(args.input, args.output, args.slide, args.shape,
+                                         args.image, overwrite=args.overwrite)
+    except ppt_engine.SafeDeckError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
+    print("wrote %s (source untouched)" % out)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -699,6 +744,51 @@ def main():
     p.add_argument("--text", required=True)
     p.add_argument("--overwrite", action="store_true")
     p.set_defaults(fn=cmd_engine_set_text)
+
+    p = sub.add_parser("engine-move-shape",
+                       help="Safe PPT Engine: controlled mutation, set one shape's left/top (EMU)")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--slide", type=int, required=True)
+    p.add_argument("--shape", type=int, required=True)
+    p.add_argument("--left", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--top", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=cmd_engine_move_shape)
+
+    p = sub.add_parser("engine-resize-shape",
+                       help="Safe PPT Engine: controlled mutation, set one shape's width/height (EMU)")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--slide", type=int, required=True)
+    p.add_argument("--shape", type=int, required=True)
+    p.add_argument("--width", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--height", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=cmd_engine_resize_shape)
+
+    p = sub.add_parser("engine-set-geometry",
+                       help="Safe PPT Engine: atomic left+top+width+height update (EMU)")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--slide", type=int, required=True)
+    p.add_argument("--shape", type=int, required=True)
+    p.add_argument("--left", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--top", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--width", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--height", type=int, required=True, help="EMU (914400 = 1 inch)")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=cmd_engine_set_geometry)
+
+    p = sub.add_parser("engine-replace-image",
+                       help="Safe PPT Engine: controlled mutation, replace a picture shape's image")
+    p.add_argument("--input", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--slide", type=int, required=True)
+    p.add_argument("--shape", type=int, required=True)
+    p.add_argument("--image", required=True, help="replacement image file path")
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(fn=cmd_engine_replace_image)
 
     args = parser.parse_args()
     try:
