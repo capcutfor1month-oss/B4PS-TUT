@@ -45,6 +45,31 @@ DECKS = {
 
 BACKUP_KEEP = 3
 
+
+class MissingDeckSourceError(Exception):
+    """Raised instead of letting a bare zipfile/OS error surface when a
+    deck's source .pptx is not present on disk (for example: not yet
+    imported, or - as with this repository's own baseline import - present
+    upstream only as an unresolved Git LFS pointer)."""
+
+
+def require_pptx(deck_name):
+    """Fail clearly, before any read/write attempt, if a deck's source file
+    is missing or empty. Returns the verified path on success."""
+    spec = DECKS[deck_name]
+    path = spec["pptx"]
+    if not os.path.exists(path):
+        raise MissingDeckSourceError(
+            "%s deck source not found: %s\n"
+            "This file is not present in this checkout. If it was expected "
+            "to come from an imported baseline, check docs/CURRENT.md for "
+            "any documented Git LFS availability limitation before assuming "
+            "this is a bug." % (deck_name, path))
+    if os.path.getsize(path) == 0:
+        raise MissingDeckSourceError(
+            "%s deck source is empty (0 bytes): %s" % (deck_name, path))
+    return path
+
 # Starting bars. `tune` raises these when the corrections log shows a band that
 # has been wrong too often; it never lowers them automatically.
 DEFAULT_THRESHOLDS = {

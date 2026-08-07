@@ -644,7 +644,11 @@ def main():
     p.set_defaults(fn=cmd_apply_text_edit)
 
     args = parser.parse_args()
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except config.MissingDeckSourceError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

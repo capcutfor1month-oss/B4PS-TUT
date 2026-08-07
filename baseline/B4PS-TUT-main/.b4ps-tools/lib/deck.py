@@ -47,6 +47,7 @@ R_ID = "{%s}id" % NS["r"]
 
 def backup(deck_name):
     """Copy the live deck into its Backups folder, then prune to BACKUP_KEEP."""
+    config.require_pptx(deck_name)
     spec = config.DECKS[deck_name]
     os.makedirs(spec["backups"], exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -105,8 +106,13 @@ class DeckReader(object):
 
     def __init__(self, deck_name, path=None):
         self.deck_name = deck_name
-        self.path = path or config.DECKS[deck_name]["pptx"]
-        self._zip = zipfile.ZipFile(self.path)
+        self.path = path or config.require_pptx(deck_name)
+        try:
+            self._zip = zipfile.ZipFile(self.path)
+        except zipfile.BadZipFile as exc:
+            raise config.MissingDeckSourceError(
+                "%s deck source is not a valid .pptx/zip: %s (%s)"
+                % (deck_name, self.path, exc))
         self._slide_order = None
 
     def close(self):

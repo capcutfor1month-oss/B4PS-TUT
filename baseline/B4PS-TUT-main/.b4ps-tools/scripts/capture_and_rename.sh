@@ -6,8 +6,12 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/aamir/Documents/B4PS TUT"
-TMP_FILE="/tmp/b4ps_capture_$$.png"
+# This script lives at <project root>/.b4ps-tools/scripts/, so the project
+# root is two levels up from here - resolved at run time instead of a
+# hardcoded per-machine path, so the script works from any checkout location.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TMP_FILE="${TMPDIR:-/tmp}/b4ps_capture_$$.png"
 
 cleanup() { rm -f "$TMP_FILE"; }
 trap cleanup EXIT
