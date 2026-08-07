@@ -6,6 +6,21 @@ edits a slide's instruction wording. All three refuse to guess when unsure.
 
 **Analysis never writes to a deck.** Applying is always a separate, deliberate step.
 
+## Setup
+
+```bash
+cd ".b4ps-tools"
+python -m venv .venv && source .venv/bin/activate   # optional but recommended
+pip install -r requirements.txt
+```
+
+**Known limitation:** as of this checkout, the two production decks
+(`Current update/Desktop/*.pptx`, `Current update/Mobile/*.pptx`) are not
+present - they were unresolved Git LFS pointers in the imported baseline (see
+`docs/CURRENT.md` in the repository root). Commands that need a deck's `.pptx`
+fail with a clear `deck source not found` error rather than a crash until
+those files are resolved.
+
 ## Using it
 
 ```bash
@@ -217,6 +232,16 @@ stays simple. The one compute optimization that *is* in place - skipping the
 matching work entirely for slides with zero boxes on the picture being
 replaced - is pure waste elimination with no effect on results.
 
+## Running tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+Tests use small synthetic fixtures for filesystem/failure-path behavior - they
+never fabricate or stand in for the real production decks.
+
 ## Notes
 
 - **Close PowerPoint before applying.** It holds an exclusive lock on the live
@@ -225,6 +250,7 @@ replaced - is pure waste elimination with no effect on results.
   per apply run, not per slide.
 - **Scope**: slides outside a deck's own Table of Contents range are flagged as
   out of scope (Desktop 7-149, Mobile 8-164). See `PPT-UPDATE-WORKFLOW.md`.
-- **Requires** `opencv-python-headless`, `Pillow`, `numpy`. Validation reuses the
-  pptx skill's `validate.py` if present, forced to UTF-8 - without that it reports
-  spurious `charmap` errors on nearly every part of these decks.
+- **Requires** `opencv-python-headless`, `Pillow`, `numpy` - see `requirements.txt`.
+  Validation reuses the pptx skill's `validate.py` if present, forced to UTF-8 -
+  without that it reports spurious `charmap` errors on nearly every part of
+  these decks.

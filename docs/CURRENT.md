@@ -6,7 +6,7 @@ Bridge4PS Documentation Engineer product repository.
 
 ## Current phase
 
-Baseline imported and verified. Implementation entry, not yet started. Repository Hardening Batch 1 has not started.
+Repository Hardening Batch 1 completed. Safe PPT Engine (the next implementation milestone) has not started.
 
 ## Active change
 
@@ -35,6 +35,8 @@ None. No OpenSpec change is open.
 
 Each entry was present in the source ZIP only as Git LFS pointer text (not a real binary); their actual binary objects were never available to this import. GitHub rejected publishing those unresolved references with `GH008`. Their exact pointer representations remain preserved, unmodified, inside the canonical ZIP.
 
+- Repository Hardening Batch 1 completed on the imported baseline tooling at `baseline/B4PS-TUT-main/.b4ps-tools/`. Hardened categories: reproducibility (removed a hardcoded personal absolute path from `scripts/capture_and_rename.sh`; added `requirements.txt`/`requirements-dev.txt` for previously-undeclared `Pillow`/`numpy`/`opencv-python-headless` dependencies), failure behavior (missing/empty/corrupt deck `.pptx` sources now raise a clear `MissingDeckSourceError` with an actionable message instead of crashing with a raw traceback, wired into `DeckReader`, `backup()`, and the CLI's top-level error handling), and operator usability (`.b4ps-tools/README.md` gained a Setup section, a Running-tests section, and an explicit note that the 2 production decks are currently unavailable in this checkout). 16 new automated tests were added under `.b4ps-tools/tests/` (`pytest`), all passing, covering the fixed failure paths (not just happy paths) using small synthetic fixtures — no production PPTX content was fabricated. `python scripts/check_pipeline.py` still passes; the canonical ZIP was not touched; no Safe PPT Engine feature work was introduced. See `docs/DECISIONS.md` for the full record and `docs/TESTING.md` for what remains deliberately unhardened.
+
 ## Registered skill sources
 
 - `phuryn/pm-skills`
@@ -46,15 +48,16 @@ See `docs/SKILLS.md` for Bridge4PS-specific availability and safety boundaries.
 ## Not included / not started
 
 - Detailed Architecture v0.1 specification (not yet migrated into GitHub — do not reconstruct or invent it)
-- Resolved binary content for the 8 omitted Git LFS pointer entries listed above (pointer text preserved in the canonical ZIP; actual binaries not present anywhere in this repository)
-- Product implementation
-- Repository Hardening Batch 1
+- Resolved binary content for the 8 omitted Git LFS pointer entries listed above (pointer text preserved in the canonical ZIP; actual binaries not present anywhere in this repository) — Batch 1 did not attempt to resolve these; it made their absence fail cleanly instead
+- Product implementation (Safe PPT Engine)
+- Editorial Memory, Documentation Intelligence, Human Review
 - Ontology work, HTML migration, browser exploration, future semantic versions, Freshdesk automation, AppSheet automation, video automation
+- Hardening of `lib/plan.py`, `lib/match.py`, `lib/anchors.py`, `lib/layout.py`, `lib/geometry.py` beyond what Batch 1 touched (no defects requiring a fix were found in scope during this batch's inspection, but they were not exhaustively re-audited line by line)
 
 ## Current blocker
 
-None for baseline import. The 8 Git LFS pointer entries are an unresolved baseline availability limitation: their actual binary content is not present in the canonical ZIP or anywhere else recovered, and was not fabricated.
+None for Repository Hardening Batch 1. The 8 Git LFS pointer entries remain an unresolved baseline availability limitation (unchanged by this batch): their actual binary content is not present anywhere recovered, and was not fabricated. Any future hardening or Safe PPT Engine work that needs the real decks is blocked on that, not on anything in this batch.
 
 ## Exact next action
 
-Repository Hardening Batch 1 is the next milestone and requires separate founder approval before starting. Do not begin it without separate approval.
+Safe PPT Engine is the next implementation milestone and has not started; it requires separate founder approval before starting.
