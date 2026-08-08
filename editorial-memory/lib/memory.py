@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Optional
 
 from .errors import (
+    CorruptProvenanceError,
+    EditorialMemoryError,
     InvalidLifecycleTransitionError,
+    KeyCollisionError,
     MissingProvenanceError,
     UnknownEvidenceError,
     UnknownKnowledgeItemError,
@@ -100,10 +103,22 @@ class EditorialMemory:
         the same durable KnowledgeItem id, so recording more evidence
         about the same subject never creates a duplicate item. If the
         item already exists, it is returned as-is (existing
-        knowledge_type/feature_area are not overwritten by this call)."""
+        knowledge_type/feature_area are not overwritten by this call).
+
+        `slugify` is lossy (e.g. "a.b" and "a-b" both normalize to
+        "a-b"). If an item already exists at this slug under a
+        *different* natural key, that is a slug collision between two
+        distinct subjects, not the same subject being re-found - raise
+        rather than silently merging their identity and history (EM-02)."""
         item_id = slugify(key)
         existing = self.store.load_knowledge_item(item_id)
         if existing is not None:
+            if existing["key"] != key:
+                raise KeyCollisionError(
+                    f"key {key!r} collides with existing key {existing['key']!r} "
+                    f"(both normalize to id {item_id!r}); refusing to merge them "
+                    "into one KnowledgeItem"
+                )
             return KnowledgeItem.from_dict(existing)
         item = KnowledgeItem(
             id=item_id, key=key, knowledge_type=knowledge_type, feature_area=feature_area, states=[]
@@ -225,9 +240,26 @@ class EditorialMemory:
         """The latest approved/verified knowledge for this item, or
         None if nothing has ever been approved. Never returns a raw
         evidence artifact, an unapproved proposal, an unresolved
-        contradictory state, or a superseded/invalidated state."""
+        contradictory state, or a superseded/invalidated state.
+
+        Also never returns a state whose cited Evidence is missing or
+        corrupt (EM-01): a current state's provenance is re-checked on
+        every call, and a broken reference raises typed
+        `CorruptProvenanceError` rather than handing back a "current"
+        claim nobody can actually verify."""
         item = self.get_knowledge_item(item_id)
-        return next((s for s in item.states if s.status == StateStatus.CURRENT), None)
+        current = next((s for s in item.states if s.status == StateStatus.CURRENT), None)
+        if current is None:
+            return None
+        for eid in current.evidence_refs:
+            try:
+                self.get_evidence(eid)
+            except EditorialMemoryError as exc:
+                raise CorruptProvenanceError(
+                    f"current state version {current.version} of {item_id!r} cites "
+                    f"evidence {eid!r}, which is missing or corrupt"
+                ) from exc
+        return current
 
     def get_history(self, item_id: str) -> list:
         """Every state this item has ever had, oldest to newest,

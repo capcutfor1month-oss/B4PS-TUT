@@ -14,15 +14,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest
 
 from lib import (
+    CorruptProvenanceError,
     EditorialMemory,
     EditorialMemoryError,
     EvidenceQuality,
     EvidenceType,
+    InvalidEvidenceIdError,
+    InvalidFeatureAreaError,
     InvalidLifecycleTransitionError,
+    KeyCollisionError,
     KnowledgeType,
     MissingProvenanceError,
     Relation,
     StateStatus,
+    StorageCorruptionError,
     UnknownEvidenceError,
     UnknownKnowledgeItemError,
     UnknownStateVersionError,
@@ -532,3 +537,247 @@ def test_slice_1_end_to_end_lifecycle_scenario(memory):
     # 15. S2 remains current until an approved resolution exists.
     assert memory.get_current(k.id).version == s2.version
     assert memory.get_current(k.id).content == "Filters opens a sidebar."
+
+
+# --------------------------------------------------------------------------
+# EM-01: get_current() must not return a state with missing/corrupt provenance
+# --------------------------------------------------------------------------
+
+def test_em01_get_current_rejects_current_state_with_deleted_evidence(memory, tmp_path):
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    evidence = _record_screenshot(memory)
+    state = memory.propose_state(item.id, content="claim", evidence_ids=[evidence.id])
+    memory.approve_state(item.id, state.version, approved_by="maintainer")
+    assert memory.get_current(item.id) is not None  # sanity: works before corruption
+
+    # Simulate the evidence artifact being lost after the fact.
+    (memory.store.evidence_dir / f"{evidence.id}.json").unlink()
+
+    with pytest.raises(CorruptProvenanceError):
+        memory.get_current(item.id)
+
+
+def test_em01_get_current_rejects_current_state_with_corrupt_evidence_file(memory):
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    evidence = _record_screenshot(memory)
+    state = memory.propose_state(item.id, content="claim", evidence_ids=[evidence.id])
+    memory.approve_state(item.id, state.version, approved_by="maintainer")
+
+    (memory.store.evidence_dir / f"{evidence.id}.json").write_text("{not valid json")
+
+    with pytest.raises(CorruptProvenanceError) as excinfo:
+        memory.get_current(item.id)
+    # The specific evidence problem remains discoverable via chaining.
+    assert isinstance(excinfo.value.__cause__, StorageCorruptionError)
+
+
+def test_em01_get_current_still_returns_a_healthy_state_untouched(memory):
+    # Regression guard: the provenance re-check must not reject a
+    # perfectly healthy current state.
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    evidence = _record_screenshot(memory)
+    state = memory.propose_state(item.id, content="claim", evidence_ids=[evidence.id])
+    memory.approve_state(item.id, state.version, approved_by="maintainer")
+    current = memory.get_current(item.id)
+    assert current is not None
+    assert current.version == state.version
+
+
+def test_em01_only_current_states_evidence_is_checked_not_history(memory):
+    # A superseded state's own evidence being lost must not block
+    # get_current() from returning the newer, healthy current state.
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    e1 = _record_screenshot(memory)
+    s1 = memory.propose_state(item.id, content="v1", evidence_ids=[e1.id])
+    memory.approve_state(item.id, s1.version, approved_by="maintainer")
+    e2 = _record_browser_observation(memory)
+    s2 = memory.propose_state(item.id, content="v2", evidence_ids=[e2.id], relation_to_previous=Relation.SUPERSEDES)
+    memory.approve_state(item.id, s2.version, approved_by="maintainer")
+
+    (memory.store.evidence_dir / f"{e1.id}.json").unlink()  # e1 backed the now-superseded s1
+
+    current = memory.get_current(item.id)
+    assert current is not None
+    assert current.version == s2.version
+
+
+# --------------------------------------------------------------------------
+# EM-02: natural-key slug collisions must not silently merge identity
+# --------------------------------------------------------------------------
+
+def test_em02_dot_and_hyphen_keys_collide_and_are_rejected(memory):
+    a = memory.get_or_create_knowledge_item("a.b", KnowledgeType.PRODUCT, "desktop.filters")
+    with pytest.raises(KeyCollisionError):
+        memory.get_or_create_knowledge_item("a-b", KnowledgeType.PRODUCT, "desktop.filters")
+    # The original item must be entirely unaffected by the rejected call.
+    assert memory.get_knowledge_item(a.id).key == "a.b"
+
+
+def test_em02_collision_detected_regardless_of_which_key_was_created_first(memory):
+    memory.get_or_create_knowledge_item("a-b", KnowledgeType.PRODUCT, "desktop.filters")
+    with pytest.raises(KeyCollisionError):
+        memory.get_or_create_knowledge_item("a.b", KnowledgeType.PRODUCT, "desktop.filters")
+
+
+def test_em02_same_key_reused_remains_idempotent_not_a_collision(memory):
+    # Re-confirms existing idempotency still works: this must NOT raise.
+    a = memory.get_or_create_knowledge_item("desktop.filters.button-label", KnowledgeType.PRODUCT, "desktop.filters")
+    b = memory.get_or_create_knowledge_item("desktop.filters.button-label", KnowledgeType.PRODUCT, "desktop.filters")
+    assert a.id == b.id
+
+
+def test_em02_identity_stays_deterministic_and_stable_across_reload(tmp_path):
+    root = tmp_path / "store"
+    m1 = EditorialMemory(root)
+    created = m1.get_or_create_knowledge_item("desktop.filters.open-behavior", KnowledgeType.PRODUCT, "desktop.filters")
+
+    m2 = EditorialMemory(root)
+    found = m2.get_or_create_knowledge_item("desktop.filters.open-behavior", KnowledgeType.PRODUCT, "desktop.filters")
+    assert found.id == created.id
+
+    # A different natural key that normalizes to the same slug ("." -> "-")
+    # must be detected as a collision even after a fresh reload, not
+    # just within the same process that created the original item.
+    with pytest.raises(KeyCollisionError):
+        m2.get_or_create_knowledge_item("desktop-filters-open-behavior", KnowledgeType.PRODUCT, "desktop.filters")
+
+
+# --------------------------------------------------------------------------
+# EM-03: feature_area path traversal/escape must be rejected
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "malicious_feature_area",
+    [
+        "../../../etc",
+        "..",
+        "desktop/../../etc",
+        "/etc/passwd",
+        "desktop\\..\\..\\etc",
+        "desktop.filters/../../evil",
+        "",
+        "desktop..filters",
+        ".hidden",
+        "desktop.",
+    ],
+)
+def test_em03_path_traversal_feature_areas_are_rejected(memory, malicious_feature_area):
+    with pytest.raises(InvalidFeatureAreaError):
+        memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, malicious_feature_area)
+
+
+def test_em03_rejected_feature_area_never_touches_disk_outside_root(tmp_path):
+    root = tmp_path / "store"
+    memory = EditorialMemory(root)
+    with pytest.raises(InvalidFeatureAreaError):
+        memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "../../escaped")
+    # Nothing was written anywhere outside (or even inside, for this
+    # rejected call) the configured root.
+    outside_marker = tmp_path.parent / "escaped"
+    assert not outside_marker.exists()
+    assert list(root.rglob("*.json")) == []
+
+
+def test_em03_legitimate_multi_segment_feature_areas_still_work(memory):
+    # Regression guard: the fix must not break the documented convention.
+    for fa in ["desktop.filters", "mobile.members", "desktop.new-filters-sidebar"]:
+        item = memory.get_or_create_knowledge_item(f"k-{fa}", KnowledgeType.PRODUCT, fa)
+        assert item.feature_area == fa
+
+
+# --------------------------------------------------------------------------
+# Corrupt JSON is normalized into a typed storage-corruption error
+# --------------------------------------------------------------------------
+
+def test_corrupt_knowledge_item_json_raises_typed_error_not_raw_json_error(memory):
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    path = memory.store.knowledge_dir / "desktop.filters" / f"{item.id}.json"
+    path.write_text("{this is not json at all")
+
+    with pytest.raises(StorageCorruptionError):
+        memory.get_knowledge_item(item.id)
+
+
+def test_corrupt_evidence_json_raises_typed_error_not_raw_json_error(memory):
+    evidence = _record_screenshot(memory)
+    path = memory.store.evidence_dir / f"{evidence.id}.json"
+    path.write_text("not json { at all")
+
+    with pytest.raises(StorageCorruptionError):
+        memory.get_evidence(evidence.id)
+
+
+def test_truncated_json_file_raises_typed_error(memory):
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    path = memory.store.knowledge_dir / "desktop.filters" / f"{item.id}.json"
+    original = path.read_text()
+    path.write_text(original[: len(original) // 2])  # truncate mid-record
+
+    with pytest.raises(StorageCorruptionError):
+        memory.get_knowledge_item(item.id)
+
+
+# --------------------------------------------------------------------------
+# EM-04: evidence_id must not escape the configured memory root
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "malicious_evidence_id",
+    [
+        "../../escape",
+        "/etc/passwd",
+        "desktop/../../etc",
+        "desktop\\..\\..\\etc",
+        "..",
+        "a/b",
+    ],
+)
+def test_em04_path_traversal_evidence_ids_are_rejected(memory, malicious_evidence_id):
+    with pytest.raises(InvalidEvidenceIdError):
+        memory.get_evidence(malicious_evidence_id)
+
+
+def test_em04_rejected_evidence_id_never_touches_disk_outside_root(tmp_path):
+    root = tmp_path / "store"
+    memory = EditorialMemory(root)
+    with pytest.raises(InvalidEvidenceIdError):
+        memory.get_evidence("../../escaped")
+    outside_marker = tmp_path.parent / "escaped"
+    assert not outside_marker.exists()
+
+
+def test_em04_valid_generated_evidence_id_still_works(memory):
+    evidence = _record_screenshot(memory)
+    # A real record_evidence()-generated id ("ev-" + hex) must be
+    # unaffected by the EM-04 validation.
+    fetched = memory.get_evidence(evidence.id)
+    assert fetched.id == evidence.id
+
+
+def test_em04_persisted_malicious_provenance_reference_is_rejected_via_get_current(memory):
+    evidence = _record_screenshot(memory)
+    item = memory.get_or_create_knowledge_item("k", KnowledgeType.PRODUCT, "desktop.filters")
+    memory.propose_state(item.id, content="s", evidence_ids=[evidence.id])
+    memory.approve_state(item.id, version=1, approved_by="maintainer")
+
+    # Tamper with the persisted KnowledgeItem record directly, as if a
+    # hand-edited or otherwise corrupted file smuggled in a traversal
+    # payload as an evidence_refs entry.
+    path = memory.store.knowledge_dir / "desktop.filters" / f"{item.id}.json"
+    raw = path.read_text().replace(evidence.id, "../../escaped")
+    path.write_text(raw)
+
+    with pytest.raises(CorruptProvenanceError) as excinfo:
+        memory.get_current(item.id)
+    assert isinstance(excinfo.value.__cause__, InvalidEvidenceIdError)
+
+
+def test_em04_evidence_id_validation_survives_reload(tmp_path):
+    root = tmp_path / "store"
+    m1 = EditorialMemory(root)
+    evidence = _record_screenshot(m1)
+
+    m2 = EditorialMemory(root)  # simulate a fresh process reload
+    assert m2.get_evidence(evidence.id).id == evidence.id
+    with pytest.raises(InvalidEvidenceIdError):
+        m2.get_evidence("../../escape")
