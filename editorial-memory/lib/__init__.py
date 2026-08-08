@@ -22,6 +22,7 @@ from .models import (
 from .errors import (
     CorruptProvenanceError,
     EditorialMemoryError,
+    FeatureAreaMismatchError,
     InvalidEvidenceIdError,
     InvalidFeatureAreaError,
     InvalidLifecycleTransitionError,
@@ -45,6 +46,7 @@ __all__ = [
     "StateStatus",
     "CorruptProvenanceError",
     "EditorialMemoryError",
+    "FeatureAreaMismatchError",
     "InvalidEvidenceIdError",
     "InvalidFeatureAreaError",
     "InvalidLifecycleTransitionError",

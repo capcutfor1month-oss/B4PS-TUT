@@ -19,6 +19,7 @@ from lib import (
     EditorialMemoryError,
     EvidenceQuality,
     EvidenceType,
+    FeatureAreaMismatchError,
     InvalidEvidenceIdError,
     InvalidFeatureAreaError,
     InvalidLifecycleTransitionError,
@@ -32,6 +33,7 @@ from lib import (
     UnknownKnowledgeItemError,
     UnknownStateVersionError,
 )
+from lib.store import slugify
 
 
 @pytest.fixture
@@ -781,3 +783,336 @@ def test_em04_evidence_id_validation_survives_reload(tmp_path):
     assert m2.get_evidence(evidence.id).id == evidence.id
     with pytest.raises(InvalidEvidenceIdError):
         m2.get_evidence("../../escape")
+
+
+# ==========================================================================
+# Slice 2: maintainer-decision bootstrap
+# ==========================================================================
+
+def _decision_kwargs(**overrides):
+    kwargs = dict(
+        key="desktop.filters.button-label",
+        feature_area="desktop.filters",
+        content="The Filters button is labeled 'Filters', not 'Filter'.",
+        source_ref="maintainer-meeting-2026-08-08",
+        captured_by="founder",
+        captured_at="2026-08-08T10:00:00+00:00",
+        notes="Confirmed in product review",
+        verification_scope=["desktop"],
+        rationale="Matches the shipped UI copy.",
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_s2_01_valid_decision_creates_one_evidence_and_one_current_state(memory):
+    memory.record_maintainer_decision(**_decision_kwargs())
+    assert len(memory.list_evidence()) == 1
+    item_id = slugify("desktop.filters.button-label")
+    current = memory.get_current(item_id)
+    assert current is not None
+    assert current.status == StateStatus.CURRENT
+
+
+def test_s2_02_state_references_the_created_evidence(memory):
+    state = memory.record_maintainer_decision(**_decision_kwargs())
+    evidence = memory.list_evidence()[0]
+    assert state.evidence_refs == [evidence.id]
+    assert evidence.evidence_type == EvidenceType.MAINTAINER_DECISION
+
+
+def test_s2_03_approved_by_and_approved_at_exist_for_current_knowledge(memory):
+    state = memory.record_maintainer_decision(**_decision_kwargs(captured_by="founder"))
+    assert state.approved_by == "founder"
+    assert state.approved_at is not None
+
+
+def test_s2_03b_approved_by_can_differ_from_captured_by(memory):
+    state = memory.record_maintainer_decision(
+        **_decision_kwargs(captured_by="assistant", approved_by="founder")
+    )
+    assert state.approved_by == "founder"
+    evidence = memory.list_evidence()[0]
+    assert evidence.captured_by == "assistant"
+
+
+def test_s2_04_rationale_survives_when_supplied(memory):
+    state = memory.record_maintainer_decision(**_decision_kwargs(rationale="Because X."))
+    assert state.rationale == "Because X."
+
+
+def test_s2_05_verification_scope_survives_when_supplied(memory):
+    memory.record_maintainer_decision(**_decision_kwargs(verification_scope=["desktop", "mobile"]))
+    evidence = memory.list_evidence()[0]
+    assert evidence.verification_scope == ["desktop", "mobile"]
+
+
+def test_s2_06_invalid_feature_area_is_rejected(memory):
+    with pytest.raises(InvalidFeatureAreaError):
+        memory.record_maintainer_decision(**_decision_kwargs(feature_area="../../escape"))
+    assert memory.list_evidence() == []
+
+
+def test_s2_07_conflicting_creation_does_not_silently_overwrite_memory(memory):
+    memory.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.filters"))
+    # A second call under the same key but a different feature_area must
+    # be rejected outright (S2-01), not silently move/overwrite the
+    # existing KnowledgeItem's feature_area.
+    with pytest.raises(FeatureAreaMismatchError):
+        memory.record_maintainer_decision(
+            **_decision_kwargs(feature_area="desktop.other", content="A materially different claim.")
+        )
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    assert item.feature_area == "desktop.filters"
+    assert len(item.states) == 1
+
+
+def test_s2_08_bootstrap_is_the_only_path_for_this_privilege(memory):
+    # The API accepts no evidence_type argument at all - a caller cannot
+    # ask the bootstrap path to mint non-maintainer-decision Evidence.
+    import inspect
+    params = inspect.signature(memory.record_maintainer_decision).parameters
+    assert "evidence_type" not in params
+    memory.record_maintainer_decision(**_decision_kwargs())
+    evidence = memory.list_evidence()[0]
+    assert evidence.evidence_type == EvidenceType.MAINTAINER_DECISION
+
+
+def test_s2_09_created_records_round_trip_through_slice1_loading(memory):
+    state = memory.record_maintainer_decision(**_decision_kwargs())
+    item_id = slugify("desktop.filters.button-label")
+    reloaded_item = memory.get_knowledge_item(item_id)
+    reloaded_state = next(s for s in reloaded_item.states if s.version == state.version)
+    assert reloaded_state.content == state.content
+    assert reloaded_state.status == StateStatus.CURRENT
+    provenance = memory.get_provenance(item_id, state.version)
+    assert len(provenance) == 1
+    assert provenance[0].evidence_type == EvidenceType.MAINTAINER_DECISION
+
+
+def test_s2_10_bootstrap_reuses_existing_approval_logic(memory, monkeypatch):
+    propose_calls = []
+    approve_calls = []
+    original_propose = memory.propose_state
+    original_approve = memory.approve_state
+
+    def spy_propose(*args, **kwargs):
+        propose_calls.append((args, kwargs))
+        return original_propose(*args, **kwargs)
+
+    def spy_approve(*args, **kwargs):
+        approve_calls.append((args, kwargs))
+        return original_approve(*args, **kwargs)
+
+    monkeypatch.setattr(memory, "propose_state", spy_propose)
+    monkeypatch.setattr(memory, "approve_state", spy_approve)
+
+    memory.record_maintainer_decision(**_decision_kwargs())
+
+    assert len(propose_calls) == 1
+    assert len(approve_calls) == 1
+    # approve_state is invoked on the exact version propose_state created,
+    # i.e. the bootstrap never writes status=current by any other route.
+    assert approve_calls[0][1]["version"] == 1
+    assert approve_calls[0][1]["approved_by"] == "founder"
+
+
+def test_s2_10b_approving_an_already_current_state_still_uses_normal_lifecycle_rules(memory):
+    # Proves the bootstrap did not bypass InvalidLifecycleTransitionError:
+    # trying to approve the same version again through the ordinary API
+    # still fails exactly as it would for any other state.
+    state = memory.record_maintainer_decision(**_decision_kwargs())
+    item_id = slugify("desktop.filters.button-label")
+    with pytest.raises(InvalidLifecycleTransitionError):
+        memory.approve_state(item_id, version=state.version, approved_by="founder")
+
+
+def test_s2_11_exact_repeat_maintainer_decision_is_idempotent(memory):
+    # Explicit, matching relation_to_previous on both calls: the default
+    # relation legitimately differs between "first state on a brand-new
+    # item" (NEW) and "another decision on an existing item" (REFINES),
+    # so an exact repeat of the *default* is not exercised here (see
+    # test_s2_15/test_s2_17 for that default behavior) - this proves
+    # idempotency for the same fields including the same explicit relation.
+    kwargs = _decision_kwargs(relation_to_previous=Relation.NEW)
+    first = memory.record_maintainer_decision(**kwargs)
+    second = memory.record_maintainer_decision(**kwargs)
+    assert first.version == second.version
+    assert first.content == second.content
+
+
+def test_s2_12_repeated_exact_input_does_not_duplicate_records(memory):
+    kwargs = _decision_kwargs(relation_to_previous=Relation.NEW)
+    memory.record_maintainer_decision(**kwargs)
+    memory.record_maintainer_decision(**kwargs)
+    memory.record_maintainer_decision(**kwargs)
+    assert len(memory.list_evidence()) == 1
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    assert len(item.states) == 1
+    assert len(memory.list_knowledge_items()) == 1
+
+
+def test_s2_13_materially_different_decision_creates_new_state_via_lifecycle(memory):
+    first = memory.record_maintainer_decision(**_decision_kwargs())
+    second = memory.record_maintainer_decision(
+        **_decision_kwargs(content="Updated: the button now reads 'Filter' (singular).")
+    )
+    assert second.version == first.version + 1
+    assert second.status == StateStatus.CURRENT
+
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    first_reloaded = next(s for s in item.states if s.version == first.version)
+    assert first_reloaded.status == StateStatus.SUPERSEDED
+    assert first_reloaded.superseded_by == second.version
+    assert len(memory.list_evidence()) == 2
+
+
+def test_s2_14_same_logical_knowledge_item_is_reused_not_duplicated(memory):
+    memory.record_maintainer_decision(**_decision_kwargs())
+    memory.record_maintainer_decision(
+        **_decision_kwargs(content="A second, materially different decision about the same item.")
+    )
+    assert len(memory.list_knowledge_items()) == 1
+
+
+def test_s2_15_default_relation_is_new_for_first_state_and_refines_for_later_ones(memory):
+    first = memory.record_maintainer_decision(**_decision_kwargs())
+    assert first.relation_to_previous == Relation.NEW
+    second = memory.record_maintainer_decision(
+        **_decision_kwargs(content="A materially different second decision.")
+    )
+    assert second.relation_to_previous == Relation.REFINES
+
+
+# --------------------------------------------------------------------------
+# S2-01: feature_area mismatch on an existing KnowledgeItem is rejected
+# --------------------------------------------------------------------------
+
+def test_s2_16_mismatched_feature_area_and_different_content_is_rejected(memory):
+    memory.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.filters"))
+    with pytest.raises(FeatureAreaMismatchError):
+        memory.record_maintainer_decision(
+            **_decision_kwargs(feature_area="desktop.other", content="A totally different claim.")
+        )
+    assert len(memory.list_evidence()) == 1
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    assert len(item.states) == 1
+    assert item.feature_area == "desktop.filters"
+
+
+def test_s2_17_mismatched_feature_area_with_otherwise_exact_repeat_is_rejected(memory):
+    # Same content/source_ref/captured_by/etc. as the original - only
+    # feature_area differs. Must still be rejected, not treated as an
+    # idempotent replay of the original decision.
+    memory.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.filters"))
+    with pytest.raises(FeatureAreaMismatchError):
+        memory.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.other"))
+    assert len(memory.list_evidence()) == 1
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    assert len(item.states) == 1
+
+
+def test_s2_18_reload_then_mismatch_is_still_rejected(tmp_path):
+    root = tmp_path / "store"
+    m1 = EditorialMemory(root)
+    m1.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.filters"))
+
+    m2 = EditorialMemory(root)  # simulate a fresh process reload
+    with pytest.raises(FeatureAreaMismatchError):
+        m2.record_maintainer_decision(
+            **_decision_kwargs(feature_area="desktop.other", content="Different after reload.")
+        )
+    item_id = slugify("desktop.filters.button-label")
+    item = m2.get_knowledge_item(item_id)
+    assert item.feature_area == "desktop.filters"
+    assert len(item.states) == 1
+    assert len(m2.list_evidence()) == 1
+
+
+def test_s2_19_mismatch_rejection_creates_no_new_records_at_all(memory):
+    memory.record_maintainer_decision(**_decision_kwargs(feature_area="desktop.filters"))
+    evidence_count_before = len(memory.list_evidence())
+    item_count_before = len(memory.list_knowledge_items())
+    states_before = len(memory.get_knowledge_item(slugify("desktop.filters.button-label")).states)
+
+    with pytest.raises(FeatureAreaMismatchError):
+        memory.record_maintainer_decision(
+            **_decision_kwargs(feature_area="mobile.filters", content="Yet another different claim.")
+        )
+
+    assert len(memory.list_evidence()) == evidence_count_before
+    assert len(memory.list_knowledge_items()) == item_count_before
+    item = memory.get_knowledge_item(slugify("desktop.filters.button-label"))
+    assert len(item.states) == states_before
+
+
+# --------------------------------------------------------------------------
+# S2-02: relation_to_previous is part of exact-repeat identity
+# --------------------------------------------------------------------------
+
+def test_s2_20_same_fields_but_different_explicit_relation_creates_new_state(memory):
+    first = memory.record_maintainer_decision(**_decision_kwargs(relation_to_previous=Relation.NEW))
+    second = memory.record_maintainer_decision(
+        **_decision_kwargs(relation_to_previous=Relation.CONTRADICTS)
+    )
+    assert second.version == first.version + 1
+    assert second.relation_to_previous == Relation.CONTRADICTS
+    assert len(memory.list_evidence()) == 2
+
+    item_id = slugify("desktop.filters.button-label")
+    item = memory.get_knowledge_item(item_id)
+    first_reloaded = next(s for s in item.states if s.version == first.version)
+    assert first_reloaded.status == StateStatus.SUPERSEDED
+    assert first_reloaded.superseded_by == second.version
+
+
+def test_s2_21_same_fields_and_same_explicit_relation_remains_idempotent(memory):
+    kwargs = _decision_kwargs(relation_to_previous=Relation.REFINES)
+    first = memory.record_maintainer_decision(**kwargs)
+    second = memory.record_maintainer_decision(**kwargs)
+    assert first.version == second.version
+    assert len(memory.list_evidence()) == 1
+
+
+def test_s2_22_refines_repeat_after_contradicts_is_a_new_state_not_idempotent(memory):
+    memory.record_maintainer_decision(**_decision_kwargs(relation_to_previous=Relation.NEW))
+    contradicting = memory.record_maintainer_decision(
+        **_decision_kwargs(relation_to_previous=Relation.CONTRADICTS)
+    )
+    # Same fields again, but with REFINES this time - still not idempotent
+    # with either prior state, since neither prior state used REFINES.
+    third = memory.record_maintainer_decision(
+        **_decision_kwargs(relation_to_previous=Relation.REFINES)
+    )
+    assert third.version == contradicting.version + 1
+    assert len(memory.list_evidence()) == 3
+
+
+def test_s2_23_default_relation_behavior_still_works(memory):
+    first = memory.record_maintainer_decision(**_decision_kwargs())
+    assert first.relation_to_previous == Relation.NEW
+    second = memory.record_maintainer_decision(
+        **_decision_kwargs(content="A materially different second decision.")
+    )
+    assert second.relation_to_previous == Relation.REFINES
+
+
+def test_s2_24_history_and_supersession_remain_correct_across_relation_changes(memory):
+    s1 = memory.record_maintainer_decision(**_decision_kwargs(relation_to_previous=Relation.NEW))
+    s2 = memory.record_maintainer_decision(
+        **_decision_kwargs(relation_to_previous=Relation.CONTRADICTS)
+    )
+    item_id = slugify("desktop.filters.button-label")
+    history = memory.get_history(item_id)
+    assert [s.version for s in history] == [1, 2]
+    assert history[0].status == StateStatus.SUPERSEDED
+    assert history[0].superseded_by == s2.version
+    assert history[1].status == StateStatus.CURRENT
+    current = memory.get_current(item_id)
+    assert current.version == s2.version
+    assert current.relation_to_previous == Relation.CONTRADICTS
