@@ -11,14 +11,18 @@ Transaction contract every mutation primitive follows:
     -> mutate
     -> save private result
     -> reopen and validate result
-    -> verify source hash unchanged (the gate, immediately before publish)
+    -> re-verify source hash unchanged (the ONE integrity gate, immediately
+       before publication - not after; a source deletion/read error here
+       is itself a typed failure)
     -> publish atomically according to overwrite policy
-    -> cleanup
+    -> cleanup (a cleanup failure is reported, never silently discarded -
+       see `_staged_copy`)
 
-No expected failure path may alter the source, overwrite an existing
-destination when overwrite=False, expose a partial final destination, leave
-a successfully published output after a source-integrity failure, leak a
-temp file, or leak a raw (untyped) exception through the CLI.
+Once `_publish_atomically` returns successfully, the transaction is
+successful - there is no post-publication integrity check. No expected
+failure path may alter the source, overwrite an existing destination when
+overwrite=False, expose a partial final destination, leak a temp file
+without reporting it, or leak a raw (untyped) exception through the CLI.
 
 This module describes deck *structure* only - it assigns no semantic
 meaning to any shape (e.g. "this is the instructional red box"). That is
@@ -29,9 +33,11 @@ subclass on failure rather than letting a bare library exception surface, so
 callers (including the CLI) get one clear, actionable reason.
 """
 
+import contextlib
 import hashlib
 import os
 import shutil
+import sys
 import tempfile
 
 from PIL import Image
@@ -248,31 +254,100 @@ def create_working_copy(path):
     happens here - never on the original, and never directly at the
     caller's requested output path - so a failed or partial mutation can
     never corrupt either. Caller is responsible for removing the returned
-    path when done. Exception-safe: if the copy itself fails partway, the
-    allocated temp path is removed rather than left behind, and the
-    failure is normalized to a typed error.
+    path when done (see `_staged_copy`, which does this for every
+    mutation primitive). Exception-safe: allocating the temp path
+    (`tempfile.mkstemp`), closing its file descriptor, and copying into it
+    are all wrapped, and any failure - including a failure while cleaning
+    up after a failed close or copy - is normalized into a typed
+    `TransactionIOError` rather than a raw OSError or a silently discarded
+    cleanup failure. A close failure is not retried: once `os.close(fd)`
+    has reported an error, that fd number's state is not safely
+    recoverable from this code - see the note at the `except` block below
+    for why - so we only clean up what we still know how to clean up (the
+    temp pathname) and raise a typed error.
     """
     load_deck(path)  # validate before copying anything
-    fd, staged = tempfile.mkstemp(prefix="b4ps_engine_", suffix=".pptx")
-    os.close(fd)
+    try:
+        fd, staged = tempfile.mkstemp(prefix="b4ps_engine_", suffix=".pptx")
+    except OSError as exc:
+        raise TransactionIOError(
+            "Could not create a temporary file for staging %s: %s" % (path, exc))
+    try:
+        os.close(fd)
+    except OSError as exc:
+        # Once close(fd) has reported an error, fd's state is ambiguous:
+        # POSIX says the descriptor slot is deallocated on return
+        # regardless of the error, but real platforms and filesystems are
+        # not all POSIX-compliant enough to trust that uniformly - and even
+        # where it holds, by the time we get back control someone else in
+        # the process (another thread, a signal handler, a library, the
+        # interpreter's own GC finalizers) may already have opened a new
+        # file and been handed this exact fd number back. There is no way
+        # from here to distinguish "still our open fd" from "already
+        # reused by something else" without racing that possibility, so we
+        # deliberately do not call fstat(fd) or close(fd) again - retrying
+        # would risk querying or closing a file descriptor this function no
+        # longer owns. We only clean up what does not require touching fd
+        # again: the temp pathname itself.
+        detail = _remove_reporting_failure(staged)
+        raise TransactionIOError(
+            "Could not close the temporary file allocated for staging %s: %s%s"
+            % (path, exc, detail))
     try:
         shutil.copy2(path, staged)
     except OSError as exc:
-        _safe_remove(staged)
+        detail = _remove_reporting_failure(staged)
         raise TransactionIOError(
-            "Could not stage a working copy of %s: %s" % (path, exc))
+            "Could not stage a working copy of %s: %s%s" % (path, exc, detail))
     return staged
 
 
-def _safe_remove(path):
-    """Best-effort cleanup only. A failure removing a temp artifact must
-    never mask the transaction's real outcome or itself leak a raw
-    exception, so it is swallowed here rather than propagated."""
+def _remove_reporting_failure(path):
+    """Remove `path` if it exists. Returns an empty string on success (or
+    if there was nothing to remove) or a parenthetical describing the
+    removal failure otherwise - callers fold this into the message of the
+    typed error they are already raising, so a cleanup failure is always
+    visible to the caller rather than silently discarded. Never itself
+    raises - it is called while another failure is already being
+    reported, and must not replace or hide that failure.
+    """
     try:
         if path and os.path.exists(path):
             os.remove(path)
-    except OSError:
-        pass
+    except OSError as exc:
+        return " (additionally, could not remove temporary file %s: %s)" % (path, exc)
+    return ""
+
+
+@contextlib.contextmanager
+def _staged_copy(input_path):
+    """Context manager wrapping `create_working_copy`: yields the staged
+    path, and on exit removes it. A cleanup failure is never silently
+    swallowed:
+
+    - If the wrapped block itself raised, that is the primary failure -
+      a secondary cleanup failure must not replace or mask it, but it is
+      still surfaced, as a warning on stderr, rather than discarded.
+    - If the wrapped block succeeded, there is no primary failure to
+      protect - a cleanup failure here is itself the only problem, so it
+      is raised as a typed `TransactionIOError` rather than ignored,
+      since a leaked temp file is a real, reportable outcome.
+    """
+    staged = create_working_copy(input_path)
+    try:
+        yield staged
+    except BaseException:
+        detail = _remove_reporting_failure(staged)
+        if detail:
+            print("warning: cleanup after a failed operation also failed%s"
+                  % detail, file=sys.stderr)
+        raise
+    else:
+        detail = _remove_reporting_failure(staged)
+        if detail:
+            raise TransactionIOError(
+                "Operation succeeded but temporary working copy cleanup "
+                "failed%s" % detail)
 
 
 def _publish_atomically(staged_path, output_path, overwrite):
@@ -317,59 +392,85 @@ def _publish_atomically(staged_path, output_path, overwrite):
             dst.flush()
             os.fsync(dst.fileno())
     except OSError as exc:
-        _safe_remove(tmp_out)
+        detail = _remove_reporting_failure(tmp_out)
         raise TransactionIOError(
-            "Could not prepare output for publication: %s" % exc)
+            "Could not prepare output for publication: %s%s" % (exc, detail))
 
     if overwrite:
         try:
             os.replace(tmp_out, output_path)
         except OSError as exc:
-            _safe_remove(tmp_out)
-            raise TransactionIOError("Could not publish output: %s" % exc)
+            detail = _remove_reporting_failure(tmp_out)
+            raise TransactionIOError("Could not publish output: %s%s" % (exc, detail))
         return
 
     try:
         os.link(tmp_out, output_path)
     except FileExistsError:
-        _safe_remove(tmp_out)
+        detail = _remove_reporting_failure(tmp_out)
+        if detail:
+            print("warning: cleanup after a failed publish also failed%s"
+                  % detail, file=sys.stderr)
         raise OutputPathError(
             "Output path was created by something else during the operation "
             "(pass overwrite=True to replace it deliberately): %s" % output_path)
     except OSError as exc:
-        _safe_remove(tmp_out)
-        raise TransactionIOError("Could not publish output: %s" % exc)
+        detail = _remove_reporting_failure(tmp_out)
+        raise TransactionIOError("Could not publish output: %s%s" % (exc, detail))
     else:
-        _safe_remove(tmp_out)
+        detail = _remove_reporting_failure(tmp_out)
+        if detail:
+            # Publication itself succeeded (the hard link exists) - a
+            # failure to remove the now-redundant temp name is a real,
+            # reportable problem in its own right, not one to discard.
+            raise TransactionIOError(
+                "Output published, but cleanup of the publication temp "
+                "file failed%s" % detail)
+
+
+def _verify_source_hash_or_raise(input_path, before_hash):
+    """Re-read and re-hash `input_path` for the pre-publish integrity
+    check, and compare it against `before_hash`. A source that has been
+    deleted, or become unreadable, since it was first hashed is itself a
+    typed failure (`DeckSourceError`) distinct from a source that is
+    merely readable but *changed* (`SafeDeckError`, the safety-invariant
+    violation) - both are reported clearly rather than surfacing as a
+    bare OSError from `file_sha256`.
+    """
+    try:
+        current_hash = file_sha256(input_path)
+    except OSError as exc:
+        raise DeckSourceError(
+            "Could not re-read the source to verify its integrity "
+            "immediately before publication: %s (%s)" % (input_path, exc))
+    if current_hash != before_hash:
+        raise SafeDeckError(
+            "input file changed during the transaction - refusing to publish "
+            "(safety invariant violated): %s" % input_path)
 
 
 def _finalize_transaction(input_path, output_path, staged, overwrite, before_hash):
     """Shared tail of every mutation transaction, run only after the
     mutation has been saved to `staged` and validated by reopening it:
 
-        verify source hash unchanged (the primary gate - runs BEFORE any
-        publish is attempted, not after)
+        verify source hash unchanged (the one gate - runs immediately
+        before publication is attempted; a source deletion/read error at
+        this point is itself a typed failure)
         -> publish atomically according to overwrite policy
-        -> (defense-in-depth only) re-verify source hash unchanged
 
-    If the source changed after it was hashed and before this runs,
-    nothing is ever published - the integrity failure is raised and
-    `output_path` is left exactly as it was.
+    If the source changed - or became unreadable - after it was hashed
+    and before this runs, nothing is ever published: the integrity
+    failure is raised and `output_path` is left exactly as it was. Once
+    `_publish_atomically` returns successfully, the transaction is
+    successful - there is no check afterward. Re-hashing the source after
+    a successful publish cannot undo that publish, and treating a
+    post-hoc difference as a transaction failure would be misleading: the
+    output was correctly and safely produced from the source exactly as
+    it existed at the moment of publication, which is the guarantee this
+    function actually makes.
     """
-    if file_sha256(input_path) != before_hash:
-        raise SafeDeckError(
-            "input file changed during the transaction - refusing to publish "
-            "(safety invariant violated): %s" % input_path)
-
+    _verify_source_hash_or_raise(input_path, before_hash)
     _publish_atomically(staged, output_path, overwrite)
-
-    if file_sha256(input_path) != before_hash:
-        # Defense-in-depth only: the gate that actually prevents an
-        # unsafe publish is the check above, which runs before
-        # _publish_atomically is ever called.
-        raise SafeDeckError(
-            "input file changed during publication - safety invariant "
-            "violated: %s" % input_path)
 
 
 # --------------------------------------------------------------------------
@@ -449,8 +550,7 @@ def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
             % (shape_index, slide_index))
     before_hash = _validate_and_hash_source(input_path)
 
-    staged = create_working_copy(input_path)
-    try:
+    with _staged_copy(input_path) as staged:
         prs = Presentation(staged)
         shape = _resolve_shape(prs, slide_index, shape_index)
         shape.text_frame.text = new_text
@@ -463,8 +563,6 @@ def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
             raise ValidationError(detail)
 
         _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
-    finally:
-        _safe_remove(staged)
 
     return output_path
 
@@ -535,8 +633,7 @@ def _run_geometry_mutation(input_path, output_path, slide_index, shape_index,
     _preflight_resolve_shape(input_path, slide_index, shape_index)
     before_hash = _validate_and_hash_source(input_path)
 
-    staged = create_working_copy(input_path)
-    try:
+    with _staged_copy(input_path) as staged:
         prs = Presentation(staged)
         shape = _resolve_shape(prs, slide_index, shape_index)
         _apply_geometry(shape, geometry)
@@ -553,8 +650,6 @@ def _run_geometry_mutation(input_path, output_path, slide_index, shape_index,
             raise ValidationError(detail)
 
         _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
-    finally:
-        _safe_remove(staged)
 
     return output_path
 
@@ -732,8 +827,7 @@ def replace_picture(input_path, output_path, slide_index, shape_index, image_pat
     with open(image_path, "rb") as fh:
         new_image_bytes = fh.read()
 
-    staged = create_working_copy(input_path)
-    try:
+    with _staged_copy(input_path) as staged:
         prs = Presentation(staged)
         slide = prs.slides[slide_index]
         shape = _resolve_shape(prs, slide_index, shape_index)
@@ -759,7 +853,5 @@ def replace_picture(input_path, output_path, slide_index, shape_index, image_pat
             raise ValidationError(detail)
 
         _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
-    finally:
-        _safe_remove(staged)
 
     return output_path
