@@ -9,6 +9,13 @@ Public API: see `memory.EditorialMemory`.
 """
 
 from .memory import EditorialMemory
+from .retrieval import (
+    CurrentKnowledge,
+    get_current_by_key,
+    get_history_by_key,
+    list_current_by_feature_area,
+    list_current_by_knowledge_type,
+)
 from .models import (
     Evidence,
     EvidenceQuality,
@@ -36,6 +43,11 @@ from .errors import (
 
 __all__ = [
     "EditorialMemory",
+    "CurrentKnowledge",
+    "get_current_by_key",
+    "get_history_by_key",
+    "list_current_by_feature_area",
+    "list_current_by_knowledge_type",
     "Evidence",
     "EvidenceQuality",
     "EvidenceType",
