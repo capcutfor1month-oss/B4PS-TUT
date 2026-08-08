@@ -23,6 +23,7 @@ from typing import Optional
 from .errors import (
     CorruptProvenanceError,
     EditorialMemoryError,
+    FeatureAreaMismatchError,
     InvalidLifecycleTransitionError,
     KeyCollisionError,
     MissingProvenanceError,
@@ -40,7 +41,7 @@ from .models import (
     Relation,
     StateStatus,
 )
-from .store import JSONStore, slugify
+from .store import JSONStore, slugify, validate_feature_area
 
 
 def _now() -> str:
@@ -293,6 +294,138 @@ class EditorialMemory:
     def get_conflicts(self, item_id: Optional[str] = None) -> list:
         """The unresolved-contradiction subset of `get_pending`."""
         return [s for s in self.get_pending(item_id) if s.review_required]
+
+    # --- Maintainer-decision bootstrap (Slice 2) --------------------------
+
+    def record_maintainer_decision(
+        self,
+        key: str,
+        feature_area: str,
+        content: str,
+        source_ref: str,
+        captured_by: str,
+        approved_by: Optional[str] = None,
+        captured_at: Optional[str] = None,
+        notes: Optional[str] = None,
+        verification_scope: Optional[list] = None,
+        rationale: Optional[str] = None,
+        relation_to_previous: Optional[Relation] = None,
+    ) -> KnowledgeState:
+        """Bootstrap path for an already-approved maintainer editorial
+        decision. This is the only evidence type with this privilege: a
+        maintainer has already supplied their approved reasoning, so this
+        performs propose_state + approve_state as one explicit workflow -
+        reusing both unchanged (never writing status=current directly,
+        never adding a second approval mechanism).
+
+        The existing item's stored `feature_area` must match the
+        requested one exactly (S2-01): a mismatch is rejected with typed
+        `FeatureAreaMismatchError` *before* any duplicate-detection or
+        mutation happens, so a mismatched request never creates Evidence,
+        never creates a KnowledgeState, and is never treated as an
+        idempotent repeat of an existing one.
+
+        Idempotent on exact-repeat input: if a state already exists on
+        this KnowledgeItem with identical content/rationale/relation_to_
+        previous, backed by Evidence with identical source_ref/
+        captured_by/captured_at/notes/verification_scope, that existing
+        state is returned as-is rather than creating duplicate Evidence/
+        KnowledgeItem/KnowledgeState records (no new persisted field is
+        needed for this - the comparison is against records already
+        stored). `relation_to_previous` is part of that identity (S2-02):
+        the same fields resubmitted with an explicitly different relation
+        (e.g. NEW vs. CONTRADICTS) are NOT an idempotent repeat and create
+        a new KnowledgeState through the ordinary Slice 1 lifecycle - as
+        does any other materially different decision (any field
+        differing) for the same KnowledgeItem."""
+        validate_feature_area(feature_area)
+        approved_by = approved_by or captured_by
+
+        item_id = slugify(key)
+        existing_data = self.store.load_knowledge_item(item_id)
+        existing_item = None
+        if existing_data is not None and existing_data["key"] == key:
+            if existing_data["feature_area"] != feature_area:
+                raise FeatureAreaMismatchError(
+                    f"KnowledgeItem {item_id!r} (key {key!r}) already exists "
+                    f"with feature_area {existing_data['feature_area']!r}; "
+                    f"refusing to record a maintainer decision for it under "
+                    f"a different feature_area {feature_area!r}"
+                )
+            existing_item = KnowledgeItem.from_dict(existing_data)
+
+        relation = relation_to_previous
+        if relation is None:
+            relation = Relation.NEW if existing_item is None or not existing_item.states else Relation.REFINES
+
+        if existing_item is not None:
+            duplicate = self._find_matching_maintainer_state(
+                existing_item, content, source_ref, captured_by,
+                captured_at, notes, verification_scope, rationale, relation,
+            )
+            if duplicate is not None:
+                return duplicate
+
+        item = self.get_or_create_knowledge_item(key, KnowledgeType.EDITORIAL, feature_area)
+
+        evidence = self.record_evidence(
+            evidence_type=EvidenceType.MAINTAINER_DECISION,
+            source_ref=source_ref,
+            captured_by=captured_by,
+            captured_at=captured_at,
+            notes=notes,
+            verification_scope=verification_scope,
+        )
+
+        proposed = self.propose_state(
+            item.id,
+            content=content,
+            evidence_ids=[evidence.id],
+            relation_to_previous=relation,
+            rationale=rationale,
+        )
+        return self.approve_state(item.id, version=proposed.version, approved_by=approved_by)
+
+    def _find_matching_maintainer_state(
+        self,
+        item: KnowledgeItem,
+        content: str,
+        source_ref: str,
+        captured_by: str,
+        captured_at: Optional[str],
+        notes: Optional[str],
+        verification_scope: Optional[list],
+        rationale: Optional[str],
+        relation_to_previous: Relation,
+    ) -> Optional[KnowledgeState]:
+        """Exact-repeat detection for the bootstrap path: a state counts
+        as the same maintainer decision if its content/rationale/
+        relation_to_previous match and every field of the Evidence it
+        cites matches, checked against records already on disk - not a
+        separate dedup index."""
+        norm_scope = list(verification_scope) if verification_scope else None
+        for state in item.states:
+            if (
+                state.content != content
+                or state.rationale != rationale
+                or state.relation_to_previous != relation_to_previous
+            ):
+                continue
+            for eid in state.evidence_refs:
+                data = self.store.load_evidence(eid)
+                if data is None:
+                    continue
+                evidence = Evidence.from_dict(data)
+                if (
+                    evidence.evidence_type == EvidenceType.MAINTAINER_DECISION
+                    and evidence.source_ref == source_ref
+                    and evidence.captured_by == captured_by
+                    and evidence.captured_at == captured_at
+                    and evidence.notes == notes
+                    and evidence.verification_scope == norm_scope
+                ):
+                    return state
+        return None
 
     def get_evidence_type_summary(self, item_id: str, version: int) -> dict:
         """Source-diversity metadata for one state: a count per

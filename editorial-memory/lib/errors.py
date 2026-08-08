@@ -86,6 +86,17 @@ class InvalidEvidenceIdError(EditorialMemoryError):
     """
 
 
+class FeatureAreaMismatchError(EditorialMemoryError):
+    """Raised by `record_maintainer_decision` (Slice 2, S2-01) when the
+    requested `feature_area` differs from the `feature_area` already
+    stored on the existing `KnowledgeItem` for the same natural key.
+    Refuses to reuse an existing item under a different feature_area,
+    silently move it, or treat a mismatched request as an idempotent
+    repeat - no Evidence or KnowledgeState is created when this is
+    raised.
+    """
+
+
 class StorageCorruptionError(EditorialMemoryError):
     """Raised when a persisted record file exists but cannot be parsed
     as the JSON this module wrote - a corrupted, truncated, or
