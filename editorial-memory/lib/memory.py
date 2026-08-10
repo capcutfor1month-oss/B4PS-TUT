@@ -21,11 +21,13 @@ from pathlib import Path
 from typing import Optional
 
 from .errors import (
+    CorruptEvidenceRecordError,
     CorruptProvenanceError,
     EditorialMemoryError,
     FeatureAreaMismatchError,
     InvalidLifecycleTransitionError,
     KeyCollisionError,
+    KnowledgeTypeMismatchError,
     MissingProvenanceError,
     UnknownEvidenceError,
     UnknownKnowledgeItemError,
@@ -41,11 +43,35 @@ from .models import (
     Relation,
     StateStatus,
 )
-from .store import JSONStore, slugify, validate_feature_area
+from .store import JSONStore, is_tombstone_entry, slugify, validate_feature_area
 
 
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _next_version(states: list, tombstoned_versions: frozenset = frozenset()) -> int:
+    """The next version to assign for a new KnowledgeState on this item:
+    one higher than every version number that still means something for
+    this item's history -
+
+    - every currently-present state's own `version`,
+    - every `superseded_by` value any surviving state still points at,
+      even if the state that version originally belonged to was later
+      removed by purge (EM47-03/finding 2), and
+    - every version this item still has a retained purge tombstone for
+      (round-3 finding 1) - a tombstoned state is no longer a real
+      `KnowledgeState` (so it isn't in `states` here at all), but its
+      identity must still never be handed to a new, unrelated state.
+
+    Never just `len(states) + 1` (unsafe once purge can remove entries)
+    and never just `max(s.version for s in states) + 1` alone (unsafe
+    once a dangling `superseded_by` reference, or a retained tombstone,
+    can refer to a version above the highest still-present real one)."""
+    used = {s.version for s in states}
+    used |= {s.superseded_by for s in states if s.superseded_by is not None}
+    used |= set(tombstoned_versions)
+    return max(used, default=0) + 1
 
 
 class EditorialMemory:
@@ -90,7 +116,20 @@ class EditorialMemory:
         data = self.store.load_evidence(evidence_id)
         if data is None:
             raise UnknownEvidenceError(f"no Evidence record with id {evidence_id!r}")
-        return Evidence.from_dict(data)
+        try:
+            return Evidence.from_dict(data)
+        except (KeyError, TypeError, ValueError) as exc:
+            # EM47-05: valid JSON but not a valid Evidence record - most
+            # commonly a Slice 7 purge tombstone stub loaded as if it
+            # were still real Evidence. Must surface as a typed
+            # Editorial Memory error, not a raw KeyError/TypeError, so
+            # get_current's existing CorruptProvenanceError wrapping
+            # (EM-01, which only catches EditorialMemoryError) still
+            # catches this too.
+            raise CorruptEvidenceRecordError(
+                f"stored Evidence record {evidence_id!r} is not a valid Evidence "
+                f"record (missing/invalid fields - e.g. a purge tombstone stub): {exc}"
+            ) from exc
 
     def list_evidence(self) -> list:
         return [self.get_evidence(eid) for eid in self.store.list_evidence_ids()]
@@ -144,7 +183,50 @@ class EditorialMemory:
         return items
 
     def _save_item(self, item: KnowledgeItem) -> None:
-        self.store.save_knowledge_item(item.to_dict())
+        """The single choke point every mutation path (`propose_state`,
+        `approve_state`, `invalidate_state`) uses to persist a
+        KnowledgeItem. `item.states` only ever holds real states -
+        `get_knowledge_item`/`store.load_knowledge_item` filter purge
+        tombstones out of it on the way in (see `store.py`) - so writing
+        `item.to_dict()` back verbatim would silently drop any tombstone
+        currently on disk for this item every time anything else about
+        it is saved.
+
+        Round-4 finding 2: a retained tombstone must stay in its exact
+        original array position, and the relative order of surviving
+        real states must not shift either - prepending tombstones (as an
+        earlier round did) or appending them satisfies "not lost" but
+        violates "same slot." The merge here instead walks the raw,
+        on-disk array position by position: a tombstone entry is carried
+        through unchanged at its own index; a real-state entry at a
+        version this call already knew about is replaced in place with
+        its updated dict (content/status/etc. may have changed);
+        anything in `item.states` that wasn't in the raw record at all
+        yet (a version `propose_state` just appended) is added at the
+        end, in its own append order - exactly where a brand-new state
+        belongs, and exactly what this method already did before any
+        tombstone existed to preserve."""
+        data = item.to_dict()
+        existing_raw = self.store.load_knowledge_item_raw(item.id)
+        if existing_raw is None:
+            self.store.save_knowledge_item(data)
+            return
+
+        updated_by_version = {s["version"]: s for s in data["states"]}
+        merged = []
+        known_versions = set()
+        for entry in existing_raw["states"]:
+            if is_tombstone_entry(entry, item.id):
+                merged.append(entry)
+                continue
+            known_versions.add(entry["version"])
+            merged.append(updated_by_version.get(entry["version"], entry))
+        for state_dict in data["states"]:
+            if state_dict["version"] not in known_versions:
+                merged.append(state_dict)
+
+        data["states"] = merged
+        self.store.save_knowledge_item(data)
 
     def _find_state(self, item: KnowledgeItem, version: int) -> KnowledgeState:
         for state in item.states:
@@ -177,7 +259,16 @@ class EditorialMemory:
             self.get_evidence(eid)  # raises UnknownEvidenceError if any reference is invalid
 
         state = KnowledgeState(
-            version=len(item.states) + 1,
+            # Derived from every version number that still means
+            # something for this item's history: currently-present
+            # states' own versions, any surviving state's `superseded_by`
+            # reference to a purged-away version, and any version this
+            # item still has a retained purge tombstone for (round-3
+            # finding 1 - tombstoned versions live in the raw record, not
+            # in the parsed `item.states` this method otherwise works
+            # from, so they're read separately here). See `_next_version`
+            # for the full reasoning.
+            version=_next_version(item.states, self.store.tombstoned_versions(item_id)),
             content=content,
             status=StateStatus.PROPOSED,
             relation_to_previous=relation_to_previous,
@@ -323,7 +414,11 @@ class EditorialMemory:
         `FeatureAreaMismatchError` *before* any duplicate-detection or
         mutation happens, so a mismatched request never creates Evidence,
         never creates a KnowledgeState, and is never treated as an
-        idempotent repeat of an existing one.
+        idempotent repeat of an existing one. Its stored `knowledge_type`
+        must likewise already be `editorial` (finding 4): a mismatch
+        raises typed `KnowledgeTypeMismatchError`, for the same reason -
+        product, documentation, and editorial knowledge must never blend
+        under one KnowledgeItem just because a natural key collides.
 
         Idempotent on exact-repeat input: if a state already exists on
         this KnowledgeItem with identical content/rationale/relation_to_
@@ -352,16 +447,25 @@ class EditorialMemory:
                     f"refusing to record a maintainer decision for it under "
                     f"a different feature_area {feature_area!r}"
                 )
+            if existing_data["knowledge_type"] != KnowledgeType.EDITORIAL.value:
+                raise KnowledgeTypeMismatchError(
+                    f"KnowledgeItem {item_id!r} (key {key!r}) already exists "
+                    f"with knowledge_type {existing_data['knowledge_type']!r}; "
+                    f"refusing to record a maintainer decision (knowledge_type="
+                    f"{KnowledgeType.EDITORIAL.value!r}) for it"
+                )
             existing_item = KnowledgeItem.from_dict(existing_data)
 
+        relation_was_omitted = relation_to_previous is None
         relation = relation_to_previous
         if relation is None:
             relation = Relation.NEW if existing_item is None or not existing_item.states else Relation.REFINES
 
         if existing_item is not None:
-            duplicate = self._find_matching_maintainer_state(
-                existing_item, content, source_ref, captured_by,
+            duplicate = self._find_matching_evidence_backed_state(
+                existing_item, EvidenceType.MAINTAINER_DECISION, content, source_ref, captured_by,
                 captured_at, notes, verification_scope, rationale, relation,
+                relation_was_omitted=relation_was_omitted,
             )
             if duplicate is not None:
                 return duplicate
@@ -386,9 +490,10 @@ class EditorialMemory:
         )
         return self.approve_state(item.id, version=proposed.version, approved_by=approved_by)
 
-    def _find_matching_maintainer_state(
+    def _find_matching_evidence_backed_state(
         self,
         item: KnowledgeItem,
+        evidence_type: EvidenceType,
         content: str,
         source_ref: str,
         captured_by: str,
@@ -397,27 +502,66 @@ class EditorialMemory:
         verification_scope: Optional[list],
         rationale: Optional[str],
         relation_to_previous: Relation,
+        relation_was_omitted: bool = False,
     ) -> Optional[KnowledgeState]:
-        """Exact-repeat detection for the bootstrap path: a state counts
-        as the same maintainer decision if its content/rationale/
-        relation_to_previous match and every field of the Evidence it
-        cites matches, checked against records already on disk - not a
-        separate dedup index."""
+        """Exact-repeat detection shared by every single-evidence bootstrap
+        path (Slice 2's maintainer decisions, Slice 4's documentation
+        ingestion): a state counts as the same submission if its content/
+        rationale/relation_to_previous match and every field of the
+        Evidence it cites matches - including `evidence_type`, so a
+        maintainer decision and a documentation ingestion never dedupe
+        against each other even with identical text - checked against
+        records already on disk, not a separate dedup index.
+
+        `relation_was_omitted` (EM47-01, revised by finding 1): when the
+        caller left `relation_to_previous` unspecified, its default
+        (`NEW` for a brand-new item, `REFINES` for a later one) is
+        derived from `item.states` *at call time*. Duplicate detection
+        must use each candidate's *own stable, persisted identity*, not
+        its transient position in `item.states` - an `enumerate()` index
+        shifts whenever an earlier state is fully removed by a Slice 7
+        purge, so "was this candidate at array index 0" stops meaning
+        "was this candidate the item's actual first-ever state" the
+        moment anything before it is purged away. `version` is never
+        renumbered for a surviving state (EM47-03/finding 2 also
+        guarantees a version number, once assigned, is never reassigned
+        to a different logical state), so `version == 1` - the version
+        every item's true first state is always given - is used instead:
+        a stable identity check that survives purges of *other* states,
+        including an earlier one. (If the item's own true first state was
+        itself purged away, nothing carries `version == 1` anymore, so a
+        repeat of exactly that original claim is correctly treated as
+        fresh - there is genuinely nothing left to compare it against,
+        matching purge's own "no trace" semantics.) An explicitly-
+        supplied relation (S2-02) is unaffected: it must still match
+        exactly, as before.
+
+        Evidence lookups (finding 3) go through the typed `get_evidence`
+        - not a raw `store.load_evidence` + `Evidence.from_dict` call -
+        so a tombstoned or otherwise corrupt Evidence record raises
+        `EditorialMemoryError` here, never an unguarded `KeyError`. A
+        missing or corrupt reference simply can't corroborate a match and
+        is skipped, exactly as a missing one already was: one candidate
+        state's damaged provenance must not block an unrelated dedup
+        check (or, worse, crash the whole ingestion call) for this item."""
         norm_scope = list(verification_scope) if verification_scope else None
         for state in item.states:
+            expected_relation = relation_to_previous
+            if relation_was_omitted:
+                expected_relation = Relation.NEW if state.version == 1 else Relation.REFINES
             if (
                 state.content != content
                 or state.rationale != rationale
-                or state.relation_to_previous != relation_to_previous
+                or state.relation_to_previous != expected_relation
             ):
                 continue
             for eid in state.evidence_refs:
-                data = self.store.load_evidence(eid)
-                if data is None:
+                try:
+                    evidence = self.get_evidence(eid)
+                except EditorialMemoryError:
                     continue
-                evidence = Evidence.from_dict(data)
                 if (
-                    evidence.evidence_type == EvidenceType.MAINTAINER_DECISION
+                    evidence.evidence_type == evidence_type
                     and evidence.source_ref == source_ref
                     and evidence.captured_by == captured_by
                     and evidence.captured_at == captured_at
@@ -426,6 +570,112 @@ class EditorialMemory:
                 ):
                     return state
         return None
+
+    # --- Existing-documentation ingestion (Slice 4) ------------------------
+
+    def ingest_existing_documentation(
+        self,
+        key: str,
+        feature_area: str,
+        content: str,
+        source_ref: str,
+        captured_by: str,
+        captured_at: Optional[str] = None,
+        notes: Optional[str] = None,
+        verification_scope: Optional[list] = None,
+        rationale: Optional[str] = None,
+        relation_to_previous: Optional[Relation] = None,
+    ) -> KnowledgeState:
+        """Ingest a claim already extracted from existing documentation
+        (a deck, a tutorial script, a repo doc - the caller has already
+        done any parsing; this method takes the resulting short claim,
+        not raw source content) as Evidence plus a proposed
+        `documentation`-type KnowledgeState.
+
+        Unlike `record_maintainer_decision`, this NEVER auto-approves:
+        existing documentation describes what was *written*, not
+        necessarily what's true today (per the approved evidence
+        hierarchy - documentation is historical, not self-approving), so
+        this is `propose_state()` alone, with no `approve_state()` call.
+        The resulting state always lands `proposed`, no matter how
+        authoritative the source looks; only an explicit, separate
+        `approve_state()` call - the same one every other proposal
+        lifecycle path uses - can ever promote it to `current`.
+
+        The existing item's stored `feature_area` must match the
+        requested one exactly, mirroring S2-01's protection: a mismatch
+        is rejected with typed `FeatureAreaMismatchError` before any
+        Evidence or KnowledgeState is created, never silently accepted
+        or treated as an idempotent repeat. Its stored `knowledge_type`
+        must likewise already be `documentation` (finding 4): a mismatch
+        raises typed `KnowledgeTypeMismatchError`, for the same reason -
+        product, documentation, and editorial knowledge must never blend
+        under one KnowledgeItem just because a natural key collides.
+
+        Idempotent on exact-repeat input, reusing the same evidence-
+        backed-state comparison Slice 2 uses (scoped to this call's own
+        `evidence_type=existing_documentation`, so it never dedupes
+        against a maintainer decision with identical text): resubmitting
+        identical content/rationale/relation_to_previous backed by
+        identical Evidence fields returns the existing proposed state
+        as-is rather than creating a duplicate. A materially different
+        resubmission (any field differing, including an explicitly
+        different `relation_to_previous`) creates a new proposed state
+        through the ordinary Slice 1 lifecycle instead."""
+        validate_feature_area(feature_area)
+
+        item_id = slugify(key)
+        existing_data = self.store.load_knowledge_item(item_id)
+        existing_item = None
+        if existing_data is not None and existing_data["key"] == key:
+            if existing_data["feature_area"] != feature_area:
+                raise FeatureAreaMismatchError(
+                    f"KnowledgeItem {item_id!r} (key {key!r}) already exists "
+                    f"with feature_area {existing_data['feature_area']!r}; "
+                    f"refusing to ingest documentation for it under "
+                    f"a different feature_area {feature_area!r}"
+                )
+            if existing_data["knowledge_type"] != KnowledgeType.DOCUMENTATION.value:
+                raise KnowledgeTypeMismatchError(
+                    f"KnowledgeItem {item_id!r} (key {key!r}) already exists "
+                    f"with knowledge_type {existing_data['knowledge_type']!r}; "
+                    f"refusing to ingest documentation (knowledge_type="
+                    f"{KnowledgeType.DOCUMENTATION.value!r}) for it"
+                )
+            existing_item = KnowledgeItem.from_dict(existing_data)
+
+        relation_was_omitted = relation_to_previous is None
+        relation = relation_to_previous
+        if relation is None:
+            relation = Relation.NEW if existing_item is None or not existing_item.states else Relation.REFINES
+
+        if existing_item is not None:
+            duplicate = self._find_matching_evidence_backed_state(
+                existing_item, EvidenceType.EXISTING_DOCUMENTATION, content, source_ref, captured_by,
+                captured_at, notes, verification_scope, rationale, relation,
+                relation_was_omitted=relation_was_omitted,
+            )
+            if duplicate is not None:
+                return duplicate
+
+        item = self.get_or_create_knowledge_item(key, KnowledgeType.DOCUMENTATION, feature_area)
+
+        evidence = self.record_evidence(
+            evidence_type=EvidenceType.EXISTING_DOCUMENTATION,
+            source_ref=source_ref,
+            captured_by=captured_by,
+            captured_at=captured_at,
+            notes=notes,
+            verification_scope=verification_scope,
+        )
+
+        return self.propose_state(
+            item.id,
+            content=content,
+            evidence_ids=[evidence.id],
+            relation_to_previous=relation,
+            rationale=rationale,
+        )
 
     def get_evidence_type_summary(self, item_id: str, version: int) -> dict:
         """Source-diversity metadata for one state: a count per
