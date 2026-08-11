@@ -71,6 +71,33 @@ class CorruptEvidenceRecordError(EditorialMemoryError):
     """
 
 
+class InvalidBrowserObservationError(EditorialMemoryError):
+    """Raised by `browser_evidence.record_browser_observation` when the
+    structured payload for a bounded Browser Verification pilot
+    observation is missing or malformed - most importantly, no
+    `direct_observations` at all. A browser observation asserting
+    nothing was actually, directly seen is not evidence of anything;
+    this is rejected before any Evidence record is ever written, the
+    same "reject at the boundary, never write something ambiguous"
+    posture `MissingProvenanceError` and `MissingPurgeAuthorizationError`
+    already use elsewhere in this module.
+    """
+
+
+class MalformedBrowserObservationError(EditorialMemoryError):
+    """Raised by `browser_evidence.get_browser_observation` when an
+    Evidence record's `notes` field cannot be parsed back into the
+    structured browser-observation shape `record_browser_observation`
+    writes - not valid JSON, missing a required key, or not tagged
+    `evidence_type=browser_observation` at all. Distinct from
+    `CorruptEvidenceRecordError` (which covers the outer Evidence
+    record itself being structurally incomplete): this covers only the
+    inner, browser-observation-specific payload inside an otherwise
+    valid Evidence record's `notes` string. Never a raw
+    `json.JSONDecodeError`/`KeyError` reaches the caller.
+    """
+
+
 class KeyCollisionError(EditorialMemoryError):
     """Raised by `get_or_create_knowledge_item` when a new natural key
     slugifies to the same durable id as an existing, different key

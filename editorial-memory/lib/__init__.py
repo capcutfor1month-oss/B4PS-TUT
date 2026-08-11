@@ -9,6 +9,11 @@ Public API: see `memory.EditorialMemory`.
 """
 
 from .memory import EditorialMemory
+from .browser_evidence import (
+    BrowserObservation,
+    get_browser_observation,
+    record_browser_observation,
+)
 from .retrieval import (
     CurrentKnowledge,
     get_current_by_key,
@@ -45,12 +50,14 @@ from .errors import (
     CorruptProvenanceError,
     EditorialMemoryError,
     FeatureAreaMismatchError,
+    InvalidBrowserObservationError,
     InvalidEvidenceIdError,
     InvalidFeatureAreaError,
     InvalidKnowledgeItemIdError,
     InvalidLifecycleTransitionError,
     KeyCollisionError,
     KnowledgeTypeMismatchError,
+    MalformedBrowserObservationError,
     MissingProvenanceError,
     MissingPurgeAuthorizationError,
     StorageCorruptionError,
@@ -61,6 +68,9 @@ from .errors import (
 
 __all__ = [
     "EditorialMemory",
+    "BrowserObservation",
+    "get_browser_observation",
+    "record_browser_observation",
     "CurrentKnowledge",
     "get_current_by_key",
     "get_history_by_key",
@@ -88,12 +98,14 @@ __all__ = [
     "CorruptProvenanceError",
     "EditorialMemoryError",
     "FeatureAreaMismatchError",
+    "InvalidBrowserObservationError",
     "InvalidEvidenceIdError",
     "InvalidFeatureAreaError",
     "InvalidKnowledgeItemIdError",
     "InvalidLifecycleTransitionError",
     "KeyCollisionError",
     "KnowledgeTypeMismatchError",
+    "MalformedBrowserObservationError",
     "MissingProvenanceError",
     "MissingPurgeAuthorizationError",
     "StorageCorruptionError",
