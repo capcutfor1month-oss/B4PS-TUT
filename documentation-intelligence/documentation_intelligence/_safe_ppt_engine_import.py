@@ -135,11 +135,17 @@ def _load_ppt_engine():
 _engine = _load_ppt_engine()
 
 inspect_deck = _engine.inspect_deck
+set_shape_text = _engine.set_shape_text
 SafeDeckError = _engine.SafeDeckError
 DeckSourceError = _engine.DeckSourceError
+MutationError = _engine.MutationError
+ValidationError = _engine.ValidationError
 
 __all__ = [
     "inspect_deck",
+    "set_shape_text",
     "SafeDeckError",
     "DeckSourceError",
+    "MutationError",
+    "ValidationError",
 ]

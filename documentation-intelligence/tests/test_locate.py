@@ -216,10 +216,27 @@ class TestReadOnlyBehavior:
         ):
             assert not hasattr(locate_module, mutating_name)
 
-    def test_bridge_exports_no_mutation_primitive(self):
-        import documentation_intelligence._safe_ppt_engine_import as bridge
+    def test_locate_module_imports_only_inspect_deck_from_the_bridge(self):
+        # The shared Safe PPT Engine bridge also serves Slice 3
+        # (`mutate.py`), which legitimately needs `set_shape_text` - so
+        # the bridge's own `__all__` is not the right place to assert
+        # Slice 2's read-only guarantee. What matters for Slice 2 is that
+        # `locate.py` itself never imports or references anything beyond
+        # `inspect_deck` from that bridge - checked directly here.
+        import ast
+        import inspect
 
-        assert bridge.__all__ == ["inspect_deck", "SafeDeckError", "DeckSourceError"]
+        import documentation_intelligence.locate as locate_module
+
+        source = inspect.getsource(locate_module)
+        tree = ast.parse(source)
+        imported_names = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "_safe_ppt_engine_import"
+            for alias in node.names
+        }
+        assert imported_names == {"inspect_deck"}
 
 
 class TestProductKnowledgeNeverParticipates:
