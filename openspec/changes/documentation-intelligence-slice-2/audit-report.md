@@ -1,0 +1,30 @@
+# Audit Report — Documentation Intelligence, Slice 2 (Existing Documentation Text Locator)
+
+## Chronology
+
+| Step | Description |
+|---|---|
+| 1 | `spec.md` written **before** implementation (correcting Slice 1's Build 1 retroactive-spec process deviation — Slice 1 Audit 1 finding 6). |
+| 2 | Build 1 implemented: `_safe_ppt_engine_import.py`, `locate.py`, `tests/test_locate.py`. |
+| 3 | Independent Codex audit — **FAIL**. |
+| 4 | Findings: DI-S2-01, DI-S2-02, GOV-DI2-01 (below). |
+| 5 | This bounded repair round (Repair Round 1) — fixes DI-S2-01 and DI-S2-02's safely-closable direction; adds GOV-DI2-01's governance records (this file and `verification-report.md`). |
+| 6 | Post-repair validation (this record) — not yet independently re-audited. |
+
+## Audit 1 — FAIL
+
+1. **DI-S2-01 — blank documentation query.** An empty or whitespace-only `documentation_text` could produce `status="matched"` against an equally empty/whitespace-only shape, via exact or whitespace-normalized equality. No deterministic rejection of a blank query existed.
+2. **DI-S2-02 — Safe PPT Engine module/type identity.** The Slice 2 bridge (`_safe_ppt_engine_import.py`) always loaded `ppt_engine.py` under its own private module name, without ever checking whether the Safe PPT Engine's own established import path (`from lib import ppt_engine`, as `baseline/B4PS-TUT-main/.b4ps-tools/tests/`'s own `conftest.py` sets up) had already loaded the exact same physical file. When that established path ran first, the bridge created a second, non-`is`-identical module object — duplicate `SafeDeckError`, duplicate `DeckSourceError`, duplicate module identity.
+3. **GOV-DI2-01 — canonical verification/audit evidence.** Only `spec.md` existed for Slice 2. No `verification-report.md`, no `audit-report.md` — the canonical per-change record set this repository requires (see Slice 1's own `openspec/changes/documentation-intelligence-slice-1/` for the established convention) was incomplete.
+
+## Repair Round 1 — fixes applied (this record)
+
+1. **DI-S2-01 — fixed.** `locate_documentation_text()` computes `normalized_target` immediately after the (still-typed-error-propagating) `inspect_deck()` call, and returns `status="unresolved"`, `unresolved_reason="no_match"` immediately whenever `normalized_target` is empty — before the candidate-matching loop runs at all. No shape, however blank, can ever satisfy a blank query. Five new regressions in `TestBlankQueryNeverMatches` (`tests/test_locate.py`) cover: `""` against an empty text box; whitespace-only query against an empty text box; whitespace-only query against whitespace-only shape text; whitespace-only query against a shape with no explicit text set; and a blank query in a deck containing both empty and non-empty shapes. All five assert `status="unresolved"`/`unresolved_reason="no_match"` — none can return `matched`.
+2. **DI-S2-02 — partially fixed; one direction reported, not closed.**
+   - **Order A (established path already loaded, Slice 2 bridge runs second): fixed.** The bridge now checks, read-only, whether `sys.modules["lib"]` already has a `ppt_engine` attribute whose `__file__` resolves to the exact expected path; if so, it reuses that object instead of loading a second copy. `sys.modules["lib"]` itself is never written by this check, so an unrelated or Editorial-Memory-owned `lib` is left completely untouched. Verified empirically and by regression (`test_order_a_established_path_first_converges`): module, `SafeDeckError`, and `DeckSourceError` identity all converge; repeated bridge imports remain stable.
+   - **Order B (Slice 2 bridge runs first, established path runs second): reported as a specific, named conflict, not closed.** True convergence in this direction would require the Slice 2 bridge to proactively claim `sys.modules["lib"]` for `.b4ps-tools/lib` before knowing whether the process will ever exercise that established path at all. `editorial-memory/lib` is a second, genuinely different real package that also only ever wants to own the bare name `lib` for itself — and every normal `documentation-intelligence/tests/` run already imports both bridges in the same process (`test_compare.py` claims `lib` for `editorial-memory/lib` well before `test_locate.py`/`test_ppt_engine_import_order.py` run, alphabetically). Proactively claiming `lib` for `.b4ps-tools/lib` would break that normal run the moment `.b4ps-tools` also happened to be on `sys.path`. Per the task's own instruction — "If the repository's existing package structure makes safe convergence impossible without changing global package ownership, STOP and report the specific conflict instead of redesigning architecture" — this direction is left open and documented (in `_safe_ppt_engine_import.py`'s own module docstring, in `spec.md`, and here) rather than force-closed. Regressions prove the actual, safe, non-corrupting behavior: `test_order_b_bridge_first_never_corrupts_editorial_memory_lib` proves `editorial-memory/lib`'s claim on `sys.modules["lib"]` survives a subsequent Safe PPT Engine established-path attempt untouched (that attempt correctly raises `ImportError`, since editorial-memory's `lib` package has no `ppt_engine` submodule); `test_order_b_bridge_first_documented_non_convergence_without_em` proves that, absent Editorial Memory in the picture, order B still does not converge — two independently-correct, non-`is`-identical module objects for the same file, never corruption, never a silently-wrong module.
+3. **GOV-DI2-01 — fixed.** This file and `verification-report.md` added, recording the truthful chronology above (spec-before-implementation, initial FAIL, these three findings, this repair round, actual post-repair validation — no pre-recorded future PASS).
+
+## Verdict
+
+**Repair Round 1 is not yet independently re-audited.** An independent Codex re-audit of this local diff is the required next action before Slice 2 is integrated or declared complete. DI-S2-02 order B remains an open, explicitly reported architectural limitation, not a defect introduced or left silently unaddressed by this round.
