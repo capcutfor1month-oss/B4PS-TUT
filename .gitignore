@@ -9,3 +9,9 @@ coverage/
 playwright-report/
 test-results/
 *.log
+
+# Layer 0 runtime-only single-writer lock file (zero-byte, created
+# automatically on generation, never durable project knowledge) - exact
+# path only, not a wildcard, so no other evidence/artifact file is
+# broadly ignored.
+documentation-artifacts/masterslide/.layer0.lock
