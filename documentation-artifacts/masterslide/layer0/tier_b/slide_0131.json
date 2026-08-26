@@ -1,0 +1,633 @@
+{
+  "slide_index": 131,
+  "shapes": [
+    {
+      "shape_id": 11,
+      "name": "Picture 10",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 0,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.079,
+        "t": 1.875,
+        "w": 7.85,
+        "h": 4.41
+      },
+      "resolved_geometry_in": {
+        "l": 1.079,
+        "t": 1.875,
+        "w": 7.85,
+        "h": 4.41
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": false,
+        "crop_l": null,
+        "crop_t": null,
+        "crop_r": null,
+        "crop_b": null,
+        "source_width_px": 1919,
+        "source_height_px": 1078,
+        "image_sha1": "df5fb3b2fec43dc56091d8afcb504bc03ff552dd"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 394,
+      "name": "Google Shape;394;p11",
+      "xml_tag": "sp",
+      "shape_type": "TEXT_BOX (17)",
+      "local_z_order": 1,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.917,
+        "t": 0.089,
+        "w": 7.907,
+        "h": 0.538
+      },
+      "resolved_geometry_in": {
+        "l": 1.917,
+        "t": 0.089,
+        "w": 7.907,
+        "h": 0.538
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 2,
+        "text_length": 19,
+        "dominant_font": "Arial Narrow",
+        "dominant_size_pt": 25.0,
+        "dominant_color": "000000",
+        "bold_run_ratio": 0.5,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": "spAutoFit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 431,
+      "name": "Google Shape;431;p11",
+      "xml_tag": "sp",
+      "shape_type": "PLACEHOLDER (14)",
+      "local_z_order": 2,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 7.692,
+        "t": 7.043,
+        "w": 2.25,
+        "h": 0.399
+      },
+      "resolved_geometry_in": {
+        "l": 7.692,
+        "t": 7.043,
+        "w": 2.25,
+        "h": 0.399
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": true,
+      "placeholder_type": "SLIDE_NUMBER (13)",
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 0,
+        "text_length": 0,
+        "dominant_font": null,
+        "dominant_size_pt": null,
+        "dominant_color": null,
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "RIGHT (3)",
+        "autofit": "noAutofit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 6,
+      "name": "Picture 5",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 3,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 3.762,
+        "t": 2.172,
+        "w": 1.399,
+        "h": 2.115
+      },
+      "resolved_geometry_in": {
+        "l": 3.762,
+        "t": 2.172,
+        "w": 1.399,
+        "h": 2.115
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": true,
+        "crop_l": "34016",
+        "crop_t": "6343",
+        "crop_r": "48173",
+        "crop_b": "45767",
+        "source_width_px": 1919,
+        "source_height_px": 1079,
+        "image_sha1": "85bd45d6361c9e6022b816742a660f62f70db843"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 12,
+      "name": "Picture 11",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 4,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 8.685,
+        "t": 1.893,
+        "w": 0.182,
+        "h": 0.203
+      },
+      "resolved_geometry_in": {
+        "l": 8.685,
+        "t": 1.893,
+        "w": 0.182,
+        "h": 0.203
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": true,
+        "crop_l": "96985",
+        "crop_t": "419",
+        "crop_r": "690",
+        "crop_b": "94974",
+        "source_width_px": 1919,
+        "source_height_px": 1079,
+        "image_sha1": "9aca0d50480b245e09092c829d5defcf6ef40c0e"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 14,
+      "name": "Google Shape;266;p25",
+      "xml_tag": "sp",
+      "shape_type": "TEXT_BOX (17)",
+      "local_z_order": 5,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.199,
+        "t": 1.081,
+        "w": 5.035,
+        "h": 0.656
+      },
+      "resolved_geometry_in": {
+        "l": 1.199,
+        "t": 1.081,
+        "w": 5.035,
+        "h": 0.656
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 1,
+        "text_length": 142,
+        "dominant_font": null,
+        "dominant_size_pt": 11.0,
+        "dominant_color": null,
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "LEFT (1)",
+        "autofit": "spAutoFit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 2,
+      "name": "Rectangle 1",
+      "xml_tag": "sp",
+      "shape_type": "AUTO_SHAPE (1)",
+      "local_z_order": 6,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 3.437,
+        "t": 2.257,
+        "w": 3.167,
+        "h": 1.941
+      },
+      "resolved_geometry_in": {
+        "l": 3.437,
+        "t": 2.257,
+        "w": 3.167,
+        "h": 1.941
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": "FF0000",
+        "width_in": 0.014
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 0,
+        "text_length": 0,
+        "dominant_font": null,
+        "dominant_size_pt": null,
+        "dominant_color": null,
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": null,
+        "word_wrap": null
+      }
+    },
+    {
+      "shape_id": 3,
+      "name": "Google Shape;267;p25",
+      "xml_tag": "sp",
+      "shape_type": "AUTO_SHAPE (1)",
+      "local_z_order": 7,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 0.958,
+        "t": 1.13,
+        "w": 0.241,
+        "h": 0.241
+      },
+      "resolved_geometry_in": {
+        "l": 0.958,
+        "t": 1.13,
+        "w": 0.241,
+        "h": 0.241
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "SOLID (1)",
+        "color": "theme:LIGHT_1 (2)"
+      },
+      "line": {
+        "color": "FF0000",
+        "width_in": 0.021
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 1,
+        "text_length": 1,
+        "dominant_font": null,
+        "dominant_size_pt": 12.0,
+        "dominant_color": null,
+        "bold_run_ratio": 1.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": "noAutofit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 4,
+      "name": "Group 3",
+      "xml_tag": "grpSp",
+      "shape_type": "GROUP (6)",
+      "local_z_order": 8,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 0.115,
+        "t": 0.024,
+        "w": 2.035,
+        "h": 0.576
+      },
+      "resolved_geometry_in": {
+        "l": 0.115,
+        "t": 0.024,
+        "w": 2.035,
+        "h": 0.576
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": [
+        7,
+        8
+      ],
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": null
+    },
+    {
+      "shape_id": 7,
+      "name": "Rectangle 6",
+      "xml_tag": "sp",
+      "shape_type": "AUTO_SHAPE (1)",
+      "local_z_order": 0,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 0.115,
+        "t": 0.024,
+        "w": 2.035,
+        "h": 0.576
+      },
+      "resolved_geometry_in": {
+        "l": 0.115,
+        "t": 0.024,
+        "w": 2.035,
+        "h": 0.576
+      },
+      "rotation": 0.0,
+      "parent_group_id": 4,
+      "group_depth": 1,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "SOLID (1)",
+        "color": "D8D8D8"
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 0,
+        "text_length": 0,
+        "dominant_font": null,
+        "dominant_size_pt": null,
+        "dominant_color": null,
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": null,
+        "word_wrap": null
+      }
+    },
+    {
+      "shape_id": 8,
+      "name": "Picture 7",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 1,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 0.122,
+        "t": 0.039,
+        "w": 2.02,
+        "h": 0.546
+      },
+      "resolved_geometry_in": {
+        "l": 0.122,
+        "t": 0.039,
+        "w": 2.02,
+        "h": 0.546
+      },
+      "rotation": 0.0,
+      "parent_group_id": 4,
+      "group_depth": 1,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": false,
+        "crop_l": null,
+        "crop_t": null,
+        "crop_r": null,
+        "crop_b": null,
+        "source_width_px": 2560,
+        "source_height_px": 692,
+        "image_sha1": "8c1ba82723a1c02c1822173bc101be39aae7e86f"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 13,
+      "name": "Picture 12",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 9,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.113,
+        "t": 2.443,
+        "w": 1.252,
+        "h": 0.578
+      },
+      "resolved_geometry_in": {
+        "l": 1.113,
+        "t": 2.443,
+        "w": 1.252,
+        "h": 0.578
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": true,
+        "crop_l": "438",
+        "crop_t": "12880",
+        "crop_r": "83619",
+        "crop_b": "74009",
+        "source_width_px": 1919,
+        "source_height_px": 1078,
+        "image_sha1": "778ea269d977abf17466d5aa9216910d403827ae"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 15,
+      "name": "Picture 14",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 10,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.148,
+        "t": 3.349,
+        "w": 1.122,
+        "h": 0.445
+      },
+      "resolved_geometry_in": {
+        "l": 1.148,
+        "t": 3.349,
+        "w": 1.122,
+        "h": 0.445
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": true,
+        "crop_l": "668",
+        "crop_t": "33432",
+        "crop_r": "85034",
+        "crop_b": "56470",
+        "source_width_px": 1919,
+        "source_height_px": 1078,
+        "image_sha1": "778ea269d977abf17466d5aa9216910d403827ae"
+      },
+      "text": null
+    },
+    {
+      "shape_id": 5,
+      "name": "Picture 4",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 11,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 3.484,
+        "t": 2.284,
+        "w": 0.167,
+        "h": 1.68
+      },
+      "resolved_geometry_in": {
+        "l": 3.484,
+        "t": 2.284,
+        "w": 0.167,
+        "h": 1.68
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": true,
+        "crop_l": "30744",
+        "crop_t": "9278",
+        "crop_r": "67133",
+        "crop_b": "52632",
+        "source_width_px": 1919,
+        "source_height_px": 1078,
+        "image_sha1": "778ea269d977abf17466d5aa9216910d403827ae"
+      },
+      "text": null
+    }
+  ]
+}

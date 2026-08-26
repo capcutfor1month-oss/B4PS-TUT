@@ -1,0 +1,285 @@
+{
+  "slide_index": 4,
+  "shapes": [
+    {
+      "shape_id": 224,
+      "name": "Google Shape;224;p6",
+      "xml_tag": "sp",
+      "shape_type": "TEXT_BOX (17)",
+      "local_z_order": 0,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 6.648,
+        "t": 0.736,
+        "w": 2.899,
+        "h": 0.532
+      },
+      "resolved_geometry_in": {
+        "l": 6.648,
+        "t": 0.736,
+        "w": 2.899,
+        "h": 0.532
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 1,
+        "text_length": 17,
+        "dominant_font": "Rockwell",
+        "dominant_size_pt": 24.0,
+        "dominant_color": "0070C0",
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": "noAutofit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 225,
+      "name": "Google Shape;225;p6",
+      "xml_tag": "sp",
+      "shape_type": "TEXT_BOX (17)",
+      "local_z_order": 1,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 2.076,
+        "t": 1.508,
+        "w": 3.785,
+        "h": 5.038
+      },
+      "resolved_geometry_in": {
+        "l": 2.076,
+        "t": 1.508,
+        "w": 3.785,
+        "h": 5.038
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 18,
+        "run_count": 45,
+        "text_length": 330,
+        "dominant_font": "Calibri",
+        "dominant_size_pt": 12.0,
+        "dominant_color": "0070C0",
+        "bold_run_ratio": 0.71,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.29,
+        "alignment": "LEFT (1)",
+        "autofit": "normAutofit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 226,
+      "name": "Google Shape;226;p6",
+      "xml_tag": "sp",
+      "shape_type": "TEXT_BOX (17)",
+      "local_z_order": 2,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 5.861,
+        "t": 1.508,
+        "w": 3.998,
+        "h": 5.038
+      },
+      "resolved_geometry_in": {
+        "l": 5.861,
+        "t": 1.508,
+        "w": 3.998,
+        "h": 5.038
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "BACKGROUND (5)",
+        "color": null
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 11,
+        "run_count": 26,
+        "text_length": 260,
+        "dominant_font": "Calibri",
+        "dominant_size_pt": 12.0,
+        "dominant_color": "0070C0",
+        "bold_run_ratio": 0.69,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.31,
+        "alignment": "LEFT (1)",
+        "autofit": "normAutofit",
+        "word_wrap": true
+      }
+    },
+    {
+      "shape_id": 2,
+      "name": "Group 1",
+      "xml_tag": "grpSp",
+      "shape_type": "GROUP (6)",
+      "local_z_order": 3,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.96,
+        "t": 0.044,
+        "w": 3.913,
+        "h": 1.167
+      },
+      "resolved_geometry_in": {
+        "l": 1.96,
+        "t": 0.044,
+        "w": 3.913,
+        "h": 1.167
+      },
+      "rotation": 0.0,
+      "parent_group_id": null,
+      "group_depth": 0,
+      "child_ids": [
+        3,
+        4
+      ],
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": null
+    },
+    {
+      "shape_id": 3,
+      "name": "Rectangle 2",
+      "xml_tag": "sp",
+      "shape_type": "AUTO_SHAPE (1)",
+      "local_z_order": 0,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 1.96,
+        "t": 0.044,
+        "w": 3.913,
+        "h": 1.167
+      },
+      "resolved_geometry_in": {
+        "l": 1.96,
+        "t": 0.044,
+        "w": 3.913,
+        "h": 1.167
+      },
+      "rotation": 0.0,
+      "parent_group_id": 2,
+      "group_depth": 1,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": {
+        "type": "SOLID (1)",
+        "color": "theme:BACKGROUND_1 (14)"
+      },
+      "line": {
+        "color": null,
+        "width_in": null
+      },
+      "connector": null,
+      "freeform": null,
+      "picture": null,
+      "text": {
+        "paragraph_count": 1,
+        "run_count": 0,
+        "text_length": 0,
+        "dominant_font": null,
+        "dominant_size_pt": null,
+        "dominant_color": null,
+        "bold_run_ratio": 0.0,
+        "italic_run_ratio": 0.0,
+        "underline_run_ratio": 0.0,
+        "alignment": "CENTER (2)",
+        "autofit": null,
+        "word_wrap": null
+      }
+    },
+    {
+      "shape_id": 4,
+      "name": "Picture 3",
+      "xml_tag": "pic",
+      "shape_type": "PICTURE (13)",
+      "local_z_order": 1,
+      "hidden": false,
+      "local_geometry_in": {
+        "l": 2.022,
+        "t": 0.115,
+        "w": 3.79,
+        "h": 1.024
+      },
+      "resolved_geometry_in": {
+        "l": 2.022,
+        "t": 0.115,
+        "w": 3.79,
+        "h": 1.024
+      },
+      "rotation": 0.0,
+      "parent_group_id": 2,
+      "group_depth": 1,
+      "child_ids": null,
+      "is_placeholder": false,
+      "placeholder_type": null,
+      "fill": null,
+      "line": null,
+      "connector": null,
+      "freeform": null,
+      "picture": {
+        "has_crop": false,
+        "crop_l": null,
+        "crop_t": null,
+        "crop_r": null,
+        "crop_b": null,
+        "source_width_px": 2560,
+        "source_height_px": 692,
+        "image_sha1": "8c1ba82723a1c02c1822173bc101be39aae7e86f"
+      },
+      "text": null
+    }
+  ]
+}

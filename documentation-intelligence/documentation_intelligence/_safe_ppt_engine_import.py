@@ -136,6 +136,8 @@ _engine = _load_ppt_engine()
 
 inspect_deck = _engine.inspect_deck
 set_shape_text = _engine.set_shape_text
+load_deck = _engine.load_deck
+file_sha256 = _engine.file_sha256
 SafeDeckError = _engine.SafeDeckError
 DeckSourceError = _engine.DeckSourceError
 MutationError = _engine.MutationError
@@ -144,6 +146,8 @@ ValidationError = _engine.ValidationError
 __all__ = [
     "inspect_deck",
     "set_shape_text",
+    "load_deck",
+    "file_sha256",
     "SafeDeckError",
     "DeckSourceError",
     "MutationError",
