@@ -567,6 +567,168 @@ def set_shape_text(input_path, output_path, slide_index, shape_index, new_text,
     return output_path
 
 
+def validate_text_runs_and_geometry_output(output_path, expected_slide_count, slide_index,
+                                            shape_index, run_edits, geometry_moves):
+    """Reopen `output_path` from scratch and confirm: it is still a valid
+    PPTX package, slide count is unchanged, every requested run edit
+    persisted exactly, and every requested geometry move landed on the
+    exact shape it was aimed at (by `shape_id`, not merely by index) with
+    the exact requested `top`. Returns (ok, detail)."""
+    try:
+        prs = load_deck(output_path)
+    except DeckSourceError as exc:
+        return False, "generated output failed to reopen: %s" % exc
+    if len(prs.slides) != expected_slide_count:
+        return False, ("slide count changed: expected %d, got %d"
+                        % (expected_slide_count, len(prs.slides)))
+    try:
+        shape = _resolve_shape(prs, slide_index, shape_index)
+    except MutationError as exc:
+        return False, "targeted shape missing after save: %s" % exc
+    for p_idx, r_idx, expected_text in run_edits:
+        try:
+            actual_text = shape.text_frame.paragraphs[p_idx].runs[r_idx].text
+        except IndexError:
+            return False, "run edit target missing after save: paragraph %d run %d" % (p_idx, r_idx)
+        if actual_text != expected_text:
+            return False, ("run edit did not persist: paragraph %d run %d expected %r, got %r"
+                            % (p_idx, r_idx, expected_text, actual_text))
+    shapes = list(prs.slides[slide_index].shapes)
+    for move_shape_index, move_shape_id, expected_top in geometry_moves:
+        if not 0 <= move_shape_index < len(shapes):
+            return False, "geometry move target missing after save: shape_index %d" % move_shape_index
+        moved = shapes[move_shape_index]
+        if moved.shape_id != move_shape_id:
+            return False, ("geometry move target identity changed after save at shape_index %d: "
+                            "expected shape_id %r, found %r" % (move_shape_index, move_shape_id, moved.shape_id))
+        if moved.top != expected_top:
+            return False, ("geometry move did not persist at shape_index %d: expected top=%r, got %r"
+                            % (move_shape_index, expected_top, moved.top))
+    return True, "ok"
+
+
+def set_shape_text_runs_and_geometry(
+    input_path, output_path, slide_index, shape_index,
+    run_edits, geometry_moves=None, overwrite=False, expected_shape_id=None,
+):
+    """Controlled mutation primitive built for Presentation Editing
+    Intelligence's scene-aware edits: applies a set of already-planned,
+    formatting-preserving run-level text edits to one target shape, plus
+    a set of already-planned geometry moves to other shapes on the same
+    slide, as **one** atomic transaction.
+
+    This exists because a text edit and its dependent local reflow must
+    land in a single save - this file's other per-primitive functions are
+    each individually built for exactly one shape's one kind of change
+    per file-to-file call, so composing two of them for one edit would
+    require two separate mutation passes (two separate publish steps,
+    each independently observable, each its own no-clobber race window)
+    for what the caller intends as one edit. This primitive follows the
+    identical transaction discipline documented at the top of this file -
+    the same `_staged_copy`/`_finalize_transaction`/`_publish_atomically`
+    machinery every other primitive uses, including the same race-free,
+    `os.link`-based `overwrite=False` no-clobber publication (Codex
+    finding PEI-S1-01: no second, weaker publication protocol exists
+    anywhere in Presentation Editing Intelligence - every mutation this
+    repository performs against a real `.pptx` funnels through this one
+    audited boundary).
+
+    `run_edits`: iterable of `(paragraph_index, run_index, new_text)` -
+    only that run's own `<a:t>` text node is touched; `Run.text`'s setter
+    leaves every other run's formatting (`<a:rPr>`: bold, italic,
+    underline, size, color, font name) completely untouched, and every
+    run not named here is left completely alone.
+
+    `geometry_moves`: iterable of `(shape_index, shape_id, new_top)` -
+    `new_top` is the shape's complete new `top` in EMU (absolute, not a
+    delta - matching `move_shape`'s own convention), validated the same
+    way `move_shape` validates its own `top` argument. The supplied
+    `shape_id` must match the shape actually found at `shape_index` or
+    the whole transaction fails before anything is staged for that move -
+    this primitive never guesses or retargets.
+
+    `expected_shape_id`, if given, is the text target's own identity
+    guard (Codex finding PEI-S1-01, re-audit): it is validated against
+    the shape actually resolved on the **staged copy**, immediately
+    before any run edit is applied - not against a separate read-only
+    load taken before staging. A caller-side pre-transaction check has a
+    TOCTOU window (the source could be swapped between that check and
+    this call actually staging/mutating it); validating on the staged
+    copy, inside this same transaction, closes that window - the staged
+    copy is what gets mutated, so checking its identity is checking the
+    identity of the thing that is actually about to change.
+
+    Never mutates `input_path`. On any failure (bad target, invalid
+    coordinate, an `expected_shape_id` mismatch on the text target, a
+    `shape_id` mismatch on any geometry move, save/validation/integrity
+    failure, or the output path already existing with `overwrite=False`),
+    nothing is written to `output_path` and `input_path` is left
+    untouched.
+    """
+    run_edits = list(run_edits)
+    geometry_moves = list(geometry_moves or [])
+    for _, _, new_top in geometry_moves:
+        _validate_coordinate(new_top, "top")
+
+    _assert_safe_output_path(input_path, output_path, overwrite)
+    target = _preflight_resolve_shape(input_path, slide_index, shape_index)
+    if run_edits and not target.has_text_frame:
+        raise MutationError(
+            "shape %d on slide %d has no text frame - cannot edit text"
+            % (shape_index, slide_index))
+    before_hash = _validate_and_hash_source(input_path)
+
+    with _staged_copy(input_path) as staged:
+        prs = Presentation(staged)
+        shape_target = _resolve_shape(prs, slide_index, shape_index)
+
+        if expected_shape_id is not None and shape_target.shape_id != expected_shape_id:
+            raise MutationError(
+                "expected_shape_id guard mismatch at slide %d shape %d: expected %r, found %r "
+                "on the staged copy - refusing to mutate the wrong shape"
+                % (slide_index, shape_index, expected_shape_id, shape_target.shape_id)
+            )
+
+        paragraphs = shape_target.text_frame.paragraphs if shape_target.has_text_frame else []
+        for p_idx, r_idx, new_text in run_edits:
+            if not 0 <= p_idx < len(paragraphs):
+                raise MutationError(
+                    "paragraph_index %d out of range (shape has %d paragraph(s))"
+                    % (p_idx, len(paragraphs)))
+            runs = paragraphs[p_idx].runs
+            if not 0 <= r_idx < len(runs):
+                raise MutationError(
+                    "run_index %d out of range in paragraph %d (has %d run(s))"
+                    % (r_idx, p_idx, len(runs)))
+            runs[r_idx].text = new_text
+
+        shapes = list(prs.slides[slide_index].shapes)
+        for move_shape_index, move_shape_id, new_top in geometry_moves:
+            if not 0 <= move_shape_index < len(shapes):
+                raise MutationError(
+                    "geometry move shape_index %d out of range (slide %d has %d shape(s))"
+                    % (move_shape_index, slide_index, len(shapes)))
+            moved = shapes[move_shape_index]
+            if moved.shape_id != move_shape_id:
+                raise MutationError(
+                    "geometry move shape_id mismatch at shape_index %d: expected %r, found %r "
+                    "- refusing to move the wrong shape"
+                    % (move_shape_index, move_shape_id, moved.shape_id))
+            moved.top = new_top
+
+        expected_slide_count = len(prs.slides)
+        _save_staged(prs, staged)
+
+        ok, detail = validate_text_runs_and_geometry_output(
+            staged, expected_slide_count, slide_index, shape_index, run_edits, geometry_moves)
+        if not ok:
+            raise ValidationError(detail)
+
+        _finalize_transaction(input_path, output_path, staged, overwrite, before_hash)
+
+    return output_path
+
+
 # --------------------------------------------------------------------------
 # geometry mutation (move / resize / atomic left+top+width+height)
 # --------------------------------------------------------------------------
